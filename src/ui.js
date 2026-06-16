@@ -170,8 +170,12 @@ function buildShards() {
     refresh(els) {
       const tier = state.vacuumTier;
       const maxed = tier >= P.BASE.vacuumTiers - 1;
-      els.name.text(`Vacuum Speed · Tier ${tier + 1}/${P.BASE.vacuumTiers}`);
-      els.sub.html(`<span class="val">${(1000 / P.vacuumInterval(tier)).toFixed(1)}</span> shards/sec`);
+      const cleaners = P.vacuumCleaners(tier).length;
+      els.name.text(`Vacuum · Lv ${tier + 1}/${P.BASE.vacuumTiers}`);
+      els.sub.html(
+        `<span class="val">${P.vacuumTotalRate(tier).toFixed(1)}</span> shards/sec · ` +
+          `${cleaners} cleaner${cleaners > 1 ? 's' : ''}`
+      );
       if (maxed) {
         els.btn.html('MAX').prop('disabled', true);
       } else {

@@ -31,26 +31,38 @@ export class Shards {
     // above one that gets sucked up so the pile collapses instead of floating.
     this.columns = Array.from({ length: this.cols }, () => []);
 
-    // Vacuum cleaner: a little sliding box on the ground.
-    this.vacuum = new Graphics();
-    this.vacuum
-      .beginFill(0x3a3f52)
-      .lineStyle(2, 0x6cf2ff, 0.9)
-      .drawRoundedRect(-26, -22, 52, 22, 4)
-      .endFill();
-    this.vacuum.beginFill(0x6cf2ff, 0.25).drawPolygon([26, -20, 44, -8, 26, -2]).endFill(); // nozzle
-    this.vacuum.y = dims.groundY;
-    this.vacuum.x = -60;
-    this.vacuum.visible = false;
-    this.container.addChild(this.vacuum);
-
-    this.vacuumInterval = 850;
-    this._suckTimer = 0;
-    this._targetCol = -1; // pile the vacuum is currently strolling toward
+    // Vacuum cleaners: up to 3 little sliding boxes on the ground, each its own
+    // colour. They appear one at a time as the Vacuum upgrade is levelled, and
+    // each strolls independently sucking up resting shards.
+    this.vacuums = []; // { g, color, interval, suckTimer, targetCol }
   }
 
-  setVacuumInterval(ms) {
-    this.vacuumInterval = ms;
+  // Build a vacuum body Graphics in the given colour (dark body, coloured trim).
+  _makeVacuum(color) {
+    const g = new Graphics();
+    g.beginFill(0x3a3f52).lineStyle(2, color, 0.9).drawRoundedRect(-26, -22, 52, 22, 4).endFill();
+    g.beginFill(color, 0.25).drawPolygon([26, -20, 44, -8, 26, -2]).endFill(); // nozzle
+    g.y = this.dims.groundY;
+    g.visible = false;
+    this.container.addChild(g);
+    return g;
+  }
+
+  // Sync the active cleaners to `configs` (one entry per cleaner, in order):
+  // each has { interval, color }. Spawns new cleaners as the count grows and
+  // updates collection intervals in place.
+  setVacuums(configs) {
+    while (this.vacuums.length < configs.length) {
+      const i = this.vacuums.length;
+      const g = this._makeVacuum(configs[i].color);
+      g.x = -60 - 60 * i; // stagger entrances off-screen to the left
+      this.vacuums.push({ g, color: configs[i].color, interval: configs[i].interval, suckTimer: 0, targetCol: -1 });
+    }
+    while (this.vacuums.length > configs.length) {
+      const v = this.vacuums.pop();
+      this.container.removeChild(v.g);
+    }
+    for (let i = 0; i < this.vacuums.length; i++) this.vacuums[i].interval = configs[i].interval;
   }
 
   // Erupt `count` shards from (x,y). `worth` is the *base* coin value; each
@@ -187,54 +199,55 @@ export class Shards {
       }
     }
 
-    this.updateVacuum(deltaMS);
+    for (const v of this.vacuums) this.updateVacuum(v, deltaMS);
   }
 
-  // Pick a new pile to wander toward: a random non-empty column, biased to ones
-  // nearby so the vacuum meanders locally instead of zipping across the screen,
-  // and preferring somewhere other than where it already sits so it keeps moving.
-  _pickTarget() {
+  // Pick a new pile for cleaner `v` to wander toward: a random non-empty column,
+  // biased to ones nearby so it meanders locally instead of zipping across the
+  // screen, and preferring somewhere other than where it sits so it keeps moving.
+  _pickTarget(v) {
     const cands = [];
     for (let c = 0; c < this.cols; c++) if (this.columns[c].length) cands.push(c);
     if (cands.length === 0) {
-      this._targetCol = -1;
+      v.targetCol = -1;
       return;
     }
-    const near = cands.filter((c) => Math.abs(c * COL_W + COL_W / 2 - this.vacuum.x) < 170);
+    const near = cands.filter((c) => Math.abs(c * COL_W + COL_W / 2 - v.g.x) < 170);
     let pool = near.length ? near : cands;
     if (pool.length > 1) {
-      const curCol = this._colAt(this.vacuum.x);
+      const curCol = this._colAt(v.g.x);
       const elsewhere = pool.filter((c) => Math.abs(c - curCol) > 1);
       if (elsewhere.length) pool = elsewhere;
     }
-    this._targetCol = pool[Math.floor(Math.random() * pool.length)];
+    v.targetCol = pool[Math.floor(Math.random() * pool.length)];
   }
 
-  updateVacuum(deltaMS) {
-    // (Re)choose a target whenever ours is gone or emptied.
-    if (this._targetCol < 0 || this.columns[this._targetCol].length === 0) this._pickTarget();
+  updateVacuum(v, deltaMS) {
+    // (Re)choose a target whenever ours is gone or emptied (possibly by another
+    // cleaner this frame).
+    if (v.targetCol < 0 || this.columns[v.targetCol].length === 0) this._pickTarget(v);
 
-    if (this._targetCol < 0) {
+    if (v.targetCol < 0) {
       // Nothing left - glide off-screen and hide.
-      this.vacuum.visible = this.vacuum.x > -50;
-      if (this.vacuum.visible) this.vacuum.x -= 0.3 * deltaMS;
+      v.g.visible = v.g.x > -50;
+      if (v.g.visible) v.g.x -= 0.3 * deltaMS;
       return;
     }
 
-    this.vacuum.visible = true;
+    v.g.visible = true;
     // Stroll toward the target pile at a deliberate pace, then suck a shard off
     // its TOP. Top-down removal keeps piles collapsing cleanly (no floating).
-    const targetX = this._targetCol * COL_W + COL_W / 2;
-    const dx = targetX - this.vacuum.x;
+    const targetX = v.targetCol * COL_W + COL_W / 2;
+    const dx = targetX - v.g.x;
     const speed = 0.5;
-    this.vacuum.x += Math.max(-speed * deltaMS, Math.min(speed * deltaMS, dx));
+    v.g.x += Math.max(-speed * deltaMS, Math.min(speed * deltaMS, dx));
 
-    this._suckTimer += deltaMS;
-    if (Math.abs(dx) < COL_W && this._suckTimer >= this.vacuumInterval) {
-      this._suckTimer = 0;
-      const colArr = this.columns[this._targetCol];
-      this.collect(colArr[colArr.length - 1]); // top of the pile
-      this._pickTarget(); // wander on to another nearby pile
+    v.suckTimer += deltaMS;
+    if (Math.abs(dx) < COL_W && v.suckTimer >= v.interval) {
+      v.suckTimer = 0;
+      const colArr = this.columns[v.targetCol];
+      if (colArr.length) this.collect(colArr[colArr.length - 1]); // top of the pile
+      this._pickTarget(v); // wander on to another nearby pile
     }
   }
 

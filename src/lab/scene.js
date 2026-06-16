@@ -41,7 +41,7 @@ export class Scene {
     );
 
     this.lastLaserSig = ''; // tracks laser stats so we only rebuild beams on change
-    this.cur = { tier: 0, idx: 0 }; // object currently being disintegrated
+    this.cur = { tier: 0, idx: 0, level: 1 }; // object currently being disintegrated
     this.alive = false;
     this.respawnTimer = 0;
     this._laserAccum = 0; // laser damage accumulated between floating-number pops
@@ -59,13 +59,13 @@ export class Scene {
   }
 
   currentWorth() {
-    return P.shardValue(state.shardLevel) * P.objectReward(this.cur.tier, this.cur.idx);
+    return P.shardValue(state.shardLevel) * P.objectReward(this.cur.tier, this.cur.idx, this.cur.level);
   }
 
   // Spawn the next object: a progressive-random pick from the current tier.
   spawnNext() {
     const o = pickSpawn();
-    this.cur = { tier: o.tier, idx: o.idx };
+    this.cur = { tier: o.tier, idx: o.idx, level: o.level };
     this.maxDur = P.objectDurability(o.tier, o.idx, o.level);
     this.dur = this.maxDur;
     this.snaps = 0;
@@ -146,7 +146,7 @@ export class Scene {
       if (this.respawnTimer <= 0) this.spawnNext();
     }
 
-    this.shards.setVacuumInterval(P.vacuumInterval(state.vacuumTier));
+    this.shards.setVacuums(P.vacuumCleaners(state.vacuumTier));
     this.shards.update(dt);
     this.floaters.update(dt);
   }

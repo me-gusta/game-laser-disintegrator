@@ -11,6 +11,9 @@ export const TIERS = [
   { name: 'White', color: 0xffffff },
   { name: 'Light Blue', color: 0xbfe3ff },
   { name: 'Light Green', color: 0xc4f5c4 },
+  { name: 'Light Orange', color: 0xffd9a8 },
+  { name: 'Light Pink', color: 0xffc4e2 },
+  { name: 'Black', color: 0x2a2a2a }, // charcoal so it reads against the dark lab bg
   { name: 'Light Purple', color: 0xe2c4ff },
 ];
 
