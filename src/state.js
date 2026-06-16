@@ -136,6 +136,34 @@ export function buyObjectNextTier() {
   return true;
 }
 
+// --- dev helpers (no cost) -------------------------------------------------
+// Max every stat of the current laser tier, then jump to the next colour tier
+// (fresh stats), mirroring the real progression but bypassing coin cost.
+export function devNextLaserTier() {
+  state.laserThickness = P.MAX_LEVEL;
+  state.laserPower = P.MAX_LEVEL;
+  state.laserBeams = P.MAX_LEVEL;
+  if (state.laserTier < P.TIER_COUNT - 1) {
+    state.laserTier++;
+    state.laserThickness = 1;
+    state.laserPower = 1;
+    state.laserBeams = 1;
+  }
+  notify();
+  return state.laserTier;
+}
+
+// Max every object of the current tier, then jump to the next colour tier.
+export function devNextObjectTier() {
+  state.objects = state.objects.map(() => P.MAX_LEVEL);
+  if (state.objectTier < P.TIER_COUNT - 1) {
+    state.objectTier++;
+    state.objects = [1, 0, 0, 0, 0];
+  }
+  notify();
+  return state.objectTier;
+}
+
 // Pick the next object to disintegrate: a progressive-random choice among the
 // unlocked shapes in the current set, weighted so more advanced shapes (higher
 // index) show up more often while earlier ones still appear.

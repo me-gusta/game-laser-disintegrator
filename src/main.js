@@ -9,7 +9,7 @@ import { Container } from '@pixi/display';
 import { Ticker } from '@pixi/ticker';
 import { Scene } from './lab/scene.js';
 import { initUI } from './ui.js';
-import { state, addCoins } from './state.js';
+import { state, addCoins, devNextLaserTier, devNextObjectTier } from './state.js';
 import { fmt } from './format.js';
 
 // Register the batch renderer used to draw Graphics/Sprites (auto-done by
@@ -59,4 +59,8 @@ ticker.start();
 
 // Console helpers for this in-house tool.
 window.game = { scene, ticker, state };
-window.dev = { addCoins: (x) => addCoins(Number(x) || 0) };
+window.dev = {
+  addCoins: (x) => addCoins(Number(x) || 0),
+  nextLaserTier: () => devNextLaserTier(),
+  nextObjectsTier: () => devNextObjectTier(),
+};
