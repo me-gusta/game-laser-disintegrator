@@ -105,7 +105,7 @@ export class Scene {
   shatter() {
     this.alive = false;
     const c = this.target.container;
-    this.shards.burst(c.x, c.y, this.shatterShards, this.target.color, this.currentWorth());
+    this.shards.burst(c.x, c.y, this.shatterShards, this.target.color, this.currentWorth(), true);
     this.target.container.alpha = 0;
     this.respawnTimer = 550;
   }

@@ -36,15 +36,21 @@ export class Laser {
     this.glow.color = visual.color;
     this.glow.outerStrength = visual.glow;
 
-    // Emitter housing, sized to span the beam spread.
-    const widest = Math.max(...visual.beams.map((b) => b.dx)) + 22;
+    // Each beam gets its own gray emitter block, sized to that beam (small
+    // beams -> smaller blocks). Blocks grow with thickness as the beams widen.
     this.emitter.clear();
-    this.emitter
-      .beginFill(0x2a2d3a)
-      .lineStyle(2, visual.color, 0.85)
-      .drawRoundedRect(this.cx - widest, 8, widest * 2, 24, 6)
-      .endFill();
-    this.emitter.beginFill(visual.color, 0.95).drawCircle(this.cx, 32, 6).endFill();
+    for (const b of visual.beams) {
+      const bx = this.cx + b.dx;
+      const bw = b.width * 2 + 8;
+      const bh = 18;
+      this.emitter
+        .beginFill(0x3a3f52)
+        .lineStyle(2, visual.color, 0.85)
+        .drawRoundedRect(bx - bw / 2, 8, bw, bh, 5)
+        .endFill();
+      // Glowing emitter lens at the mouth of the block.
+      this.emitter.beginFill(visual.color, 0.95).drawCircle(bx, 8 + bh - 3, Math.max(2.5, b.width * 0.32)).endFill();
+    }
 
     this.rebuildBeams();
   }
@@ -61,26 +67,32 @@ export class Laser {
   }
 
   drawBeams(flicker) {
-    const top = 34;
+    const top = 28;
     const bottom = this.targetY;
     const color = this.visual.color;
+    // Beams whose emitter sits outside this half-width angle inward so they
+    // actually strike the object instead of glowing straight past its sides.
+    const AIM_HALF = 40;
     for (const g of this.beams) {
       const s = g._spec;
       const half = s.width / 2;
       const I = s.intensity * flicker;
+
+      // Top at the emitter (s.dx), bottom converged toward the object center.
+      const botX = Math.max(-AIM_HALF, Math.min(AIM_HALF, s.dx));
+      const len = Math.hypot(botX - s.dx, bottom - top);
+
       g.clear();
+      // Drawn straight (downward), then rotated so its foot lands on the object.
       // Soft outer glow body.
-      g.beginFill(color, 0.18 * I)
-        .drawRoundedRect(-s.width + s.dx, top, s.width * 2, bottom - top, half)
-        .endFill();
+      g.beginFill(color, 0.18 * I).drawRoundedRect(-s.width, 0, s.width * 2, len, half).endFill();
       // Coloured beam.
-      g.beginFill(color, 0.85 * I)
-        .drawRoundedRect(-half + s.dx, top, s.width, bottom - top, half)
-        .endFill();
+      g.beginFill(color, 0.85 * I).drawRoundedRect(-half, 0, s.width, len, half).endFill();
       // Bright white core.
-      g.beginFill(0xffffff, 0.5 * I)
-        .drawRoundedRect(-half * 0.5 + s.dx, top, half, bottom - top, half * 0.5)
-        .endFill();
+      g.beginFill(0xffffff, 0.5 * I).drawRoundedRect(-half * 0.5, 0, half, len, half * 0.5).endFill();
+
+      g.position.set(s.dx, top);
+      g.rotation = Math.atan2(s.dx - botX, bottom - top); // tilt toward center
     }
   }
 

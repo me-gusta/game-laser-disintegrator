@@ -9,6 +9,7 @@ import { Graphics } from '@pixi/graphics';
 
 const GRAVITY = 0.0011; // px / ms^2
 const RESTITUTION = 0.5; // wall bounciness
+const COL_W = 12; // width of a stacking column (px)
 
 export class Shards {
   // onCollect(worth) is called once per shard the vacuum picks up.
@@ -20,6 +21,15 @@ export class Shards {
     this.layer = new Container();
     this.container.addChild(this.layer);
     this.shards = [];
+
+    // Stacking: a height-map of column surface heights. A landing shard sits on
+    // top of whatever is already in its column instead of all piling at groundY,
+    // so shards visually heap on top of each other (no real physics needed).
+    this.cols = Math.max(1, Math.ceil(dims.width / COL_W));
+    this.stacks = new Array(this.cols).fill(dims.groundY);
+    // Per-column list of resting shards, bottom -> top. Lets us drop the shards
+    // above one that gets sucked up so the pile collapses instead of floating.
+    this.columns = Array.from({ length: this.cols }, () => []);
 
     // Vacuum cleaner: a little sliding box on the ground.
     this.vacuum = new Graphics();
@@ -36,36 +46,84 @@ export class Shards {
 
     this.vacuumInterval = 850;
     this._suckTimer = 0;
+    this._targetCol = -1; // pile the vacuum is currently strolling toward
   }
 
   setVacuumInterval(ms) {
     this.vacuumInterval = ms;
   }
 
-  // Erupt `count` shards from (x,y), split left/right, each worth `worth` coins.
-  burst(x, y, count, color, worth) {
+  // Erupt `count` shards from (x,y). `worth` is the *base* coin value; each
+  // shard's actual worth scales with its size (bigger chunk -> more coins).
+  // When `everywhere` is false the shards are flung hard to the left and right
+  // (never straight down the center); when true they spray in every direction.
+  burst(x, y, count, color, worth, everywhere = false) {
     for (let i = 0; i < count; i++) {
+      // Size factor biased toward small bits with the occasional big chunk.
+      const sizeF = 0.6 + Math.random() * Math.random() * 2.0;
+      const s = 2.5 + sizeF * 3; // half-extent of the diamond
+      const shardWorth = Math.max(1, Math.round(worth * sizeF));
+
       const g = new Graphics();
-      const s = 3 + Math.random() * 3;
       g.beginFill(color, 0.95).drawPolygon([0, -s, s, 0, 0, s, -s, 0]).endFill();
       g.x = x;
       g.y = y;
-      const dir = i % 2 === 0 ? 1 : -1; // alternate sides
       this.layer.addChild(g);
+
+      let vx;
+      let vy;
+      if (everywhere) {
+        // Full radial spray - shards land all over, including the center.
+        vx = (Math.random() - 0.5) * 0.9;
+        vy = -(0.05 + Math.random() * 0.45);
+      } else {
+        // Hard left/right only, with a minimum speed so nothing dribbles down
+        // the middle.
+        const dir = i % 2 === 0 ? 1 : -1;
+        vx = dir * (0.28 + Math.random() * 0.3);
+        vy = -(0.15 + Math.random() * 0.25);
+      }
+
       this.shards.push({
         g,
-        vx: dir * (0.18 + Math.random() * 0.22),
-        vy: -(0.15 + Math.random() * 0.25),
-        worth,
+        vx,
+        vy,
+        size: s,
+        worth: shardWorth,
         resting: false,
+        col: -1,
+        consumed: 0,
         spin: (Math.random() - 0.5) * 0.01,
       });
     }
     // Cap live shards so the scene never thrashes.
     while (this.shards.length > 600) {
-      const old = this.shards.shift();
-      this.layer.removeChild(old.g);
+      this._remove(this.shards[0]);
     }
+  }
+
+  _colAt(x) {
+    const c = Math.floor(x / COL_W);
+    return c < 0 ? 0 : c >= this.cols ? this.cols - 1 : c;
+  }
+
+  // Remove a shard from the scene. If it was buried in a pile, drop every shard
+  // resting above it down by its height so the pile collapses to fill the gap
+  // instead of leaving a floating crust.
+  _remove(shard) {
+    const i = this.shards.indexOf(shard);
+    if (i >= 0) this.shards.splice(i, 1);
+    if (shard.resting && shard.col >= 0) {
+      const colArr = this.columns[shard.col];
+      const ci = colArr.indexOf(shard);
+      if (ci >= 0) {
+        colArr.splice(ci, 1);
+        // Everything that was stacked above slides down into the gap.
+        for (let k = ci; k < colArr.length; k++) colArr[k].g.y += shard.consumed;
+        this.stacks[shard.col] = Math.min(this.dims.groundY, this.stacks[shard.col] + shard.consumed);
+      }
+    }
+    this.layer.removeChild(shard.g);
   }
 
   restingCount() {
@@ -91,51 +149,97 @@ export class Shards {
         s.g.x = width - 6;
         s.vx = -Math.abs(s.vx) * RESTITUTION;
       }
-      // Land on the ground.
-      if (s.g.y >= groundY - 4) {
-        s.g.y = groundY - 4 - Math.random() * 6;
+      // Land on top of whatever is already piled in this column.
+      let col = this._colAt(s.g.x);
+      if (s.g.y >= this.stacks[col] - s.size) {
+        // Angle of repose: instead of stacking straight up into a thin tower,
+        // roll downhill into a lower neighbouring column until the local slope
+        // is gentle enough. (Surface is a y value - larger y = shorter pile.)
+        const step = s.size * 1.2; // height drop tolerated before a shard rolls
+        for (let it = 0; it < 24; it++) {
+          const here = this.stacks[col];
+          const lo = col > 0 ? this.stacks[col - 1] : -Infinity;
+          const ro = col < this.cols - 1 ? this.stacks[col + 1] : -Infinity;
+          let target = col;
+          let targetY = here;
+          if (lo > targetY) { targetY = lo; target = col - 1; }
+          if (ro > targetY) { targetY = ro; target = col + 1; }
+          if (target === col || targetY - here <= step) break;
+          col = target;
+        }
+
+        const surface = this.stacks[col];
+        const cx = col * COL_W + COL_W / 2;
+        // Settle with a little random scatter in x, y and rotation so the heap
+        // looks like loose debris instead of a rigid grid.
+        s.g.x = cx + (Math.random() - 0.5) * COL_W * 0.9;
+        s.g.y = surface - s.size + (Math.random() - 0.5) * 3;
+        s.g.rotation += (Math.random() - 0.5) * 0.6;
         s.resting = true;
         s.vx = 0;
         s.vy = 0;
+        s.col = col;
+        // Raise the column, overlapping the previous shard heavily so the heap
+        // packs densely rather than building a thin tower.
+        s.consumed = s.size;
+        this.stacks[col] = surface - s.consumed;
+        this.columns[col].push(s); // top of this column's stack
       }
     }
 
     this.updateVacuum(deltaMS);
   }
 
+  // Pick a new pile to wander toward: a random non-empty column, biased to ones
+  // nearby so the vacuum meanders locally instead of zipping across the screen,
+  // and preferring somewhere other than where it already sits so it keeps moving.
+  _pickTarget() {
+    const cands = [];
+    for (let c = 0; c < this.cols; c++) if (this.columns[c].length) cands.push(c);
+    if (cands.length === 0) {
+      this._targetCol = -1;
+      return;
+    }
+    const near = cands.filter((c) => Math.abs(c * COL_W + COL_W / 2 - this.vacuum.x) < 170);
+    let pool = near.length ? near : cands;
+    if (pool.length > 1) {
+      const curCol = this._colAt(this.vacuum.x);
+      const elsewhere = pool.filter((c) => Math.abs(c - curCol) > 1);
+      if (elsewhere.length) pool = elsewhere;
+    }
+    this._targetCol = pool[Math.floor(Math.random() * pool.length)];
+  }
+
   updateVacuum(deltaMS) {
-    const resting = this.shards.filter((s) => s.resting);
-    if (resting.length === 0) {
-      // Glide off-screen and hide.
+    // (Re)choose a target whenever ours is gone or emptied.
+    if (this._targetCol < 0 || this.columns[this._targetCol].length === 0) this._pickTarget();
+
+    if (this._targetCol < 0) {
+      // Nothing left - glide off-screen and hide.
       this.vacuum.visible = this.vacuum.x > -50;
       if (this.vacuum.visible) this.vacuum.x -= 0.3 * deltaMS;
       return;
     }
 
     this.vacuum.visible = true;
-    // Target the nearest resting shard.
-    let target = resting[0];
-    for (const s of resting) {
-      if (Math.abs(s.g.x - this.vacuum.x) < Math.abs(target.g.x - this.vacuum.x)) target = s;
-    }
-    // Slide fast toward the nearest shard so that travel time is negligible and
-    // the suck interval (the upgradeable stat) is what actually gates income.
-    const dx = target.g.x - this.vacuum.x;
-    const speed = 1.1;
+    // Stroll toward the target pile at a deliberate pace, then suck a shard off
+    // its TOP. Top-down removal keeps piles collapsing cleanly (no floating).
+    const targetX = this._targetCol * COL_W + COL_W / 2;
+    const dx = targetX - this.vacuum.x;
+    const speed = 0.5;
     this.vacuum.x += Math.max(-speed * deltaMS, Math.min(speed * deltaMS, dx));
 
-    // Suck up shards at the tier-defined rate when over a shard.
     this._suckTimer += deltaMS;
-    if (Math.abs(dx) < 32 && this._suckTimer >= this.vacuumInterval) {
+    if (Math.abs(dx) < COL_W && this._suckTimer >= this.vacuumInterval) {
       this._suckTimer = 0;
-      this.collect(target);
+      const colArr = this.columns[this._targetCol];
+      this.collect(colArr[colArr.length - 1]); // top of the pile
+      this._pickTarget(); // wander on to another nearby pile
     }
   }
 
   collect(shard) {
-    const i = this.shards.indexOf(shard);
-    if (i >= 0) this.shards.splice(i, 1);
-    this.layer.removeChild(shard.g);
+    this._remove(shard);
     this.onCollect(shard.worth);
   }
 }
