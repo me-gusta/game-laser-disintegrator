@@ -12,3 +12,15 @@ export function fmt(n) {
   }
   return x.toFixed(2) + units[u];
 }
+
+// Human-readable away-time, e.g. "12h 0m", "5m 30s", "45s". Shows at most the
+// two most significant non-zero units.
+export function fmtDuration(seconds) {
+  const s = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}

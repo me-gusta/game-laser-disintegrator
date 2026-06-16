@@ -327,3 +327,62 @@ button.buy .cost {
   padding: 5px 2px;
   font-size: 11px;
 }
+
+/* Offline-reward modal */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 7, 12, 0.72);
+}
+.modal-backdrop .modal {
+  width: min(380px, 90vw);
+  padding: 24px;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
+}
+.modal-backdrop h2 {
+  margin: 0 0 12px;
+  font-size: 22px;
+  color: var(--accent);
+}
+.modal-backdrop p {
+  margin: 6px 0;
+  font-size: 14px;
+}
+.modal-backdrop p.sub {
+  color: var(--muted);
+}
+.modal-backdrop small {
+  color: var(--muted);
+}
+.modal-backdrop .reward {
+  margin: 16px 0 20px;
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--gold);
+}
+.modal-backdrop .reward span {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.modal-backdrop button.collect {
+  padding: 11px 28px;
+  border-radius: 10px;
+  border: 1px solid var(--good);
+  background: #243a2c;
+  color: var(--good);
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+}
+.modal-backdrop button.collect:hover {
+  background: #2c4836;
+}

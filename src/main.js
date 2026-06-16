@@ -8,9 +8,15 @@ import { extensions } from '@pixi/extensions';
 import { Container } from '@pixi/display';
 import { Ticker } from '@pixi/ticker';
 import { Scene } from './lab/scene.js';
-import { initUI } from './ui.js';
+import { initUI, showOfflineReward } from './ui.js';
 import { state, addCoins, devNextLaserTier, devNextObjectTier } from './state.js';
 import { fmt } from './format.js';
+import { passiveCoinsPerSecond, offlineCoins } from './progression.js';
+import { loadGame, saveGame, installAutosave } from './persistence.js';
+
+// Restore any saved game BEFORE the scene/UI read state, so they build from the
+// player's real progress. `loaded.savedAt` tells us how long they were away.
+const loaded = loadGame();
 
 // Register the batch renderer used to draw Graphics/Sprites (auto-done by
 // @pixi/app normally, but we are wiring core by hand).
@@ -38,6 +44,21 @@ stage.addChild(scene.container);
 renderer.view.addEventListener('pointerdown', () => scene.click());
 
 initUI();
+
+// Offline progression: credit coins the laser "earned" while the tab was gone
+// (>=60s, capped at 12h, at 70% of the live passive rate). Granted after the UI
+// has subscribed so the coin counter updates, then we immediately re-save to
+// stamp a fresh savedAt (otherwise a quick reload would award the gap twice).
+if (loaded && loaded.savedAt) {
+  const elapsedSeconds = (Date.now() - loaded.savedAt) / 1000;
+  const reward = offlineCoins(elapsedSeconds, passiveCoinsPerSecond(state));
+  if (reward.coins > 0) {
+    addCoins(reward.coins);
+    showOfflineReward(reward);
+  }
+}
+saveGame(); // stamp current time as the new baseline
+installAutosave();
 
 // Durability readout above the canvas.
 const durText = document.getElementById('dur-text');

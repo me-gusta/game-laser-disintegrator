@@ -21,6 +21,10 @@ npm run build    # production bundle in dist/
   shedding **shards** that fly to the walls, bounce, and fall to the floor.
 - The **vacuum** slides along the floor and sucks up shards; each one pays coins.
 - Spend coins in the three upgrade tabs on the right.
+- **Offline progression** — your progress is saved automatically, and while the
+  tab is closed/hidden the laser keeps working. On return you're credited **70%**
+  of your live passive income for the time away (ignored below **60s**, capped at
+  **12h**), shown in a "Welcome back" pop-up.
 
 ## Upgrades
 
@@ -43,7 +47,8 @@ npm run build    # production bundle in dist/
 
 | File | Responsibility |
 |------|----------------|
-| `src/progression.js` | **All balance math** — baseline numbers + exponential curves. Tune the game here. |
+| `src/progression.js` | **All balance math** — baseline numbers + exponential curves. Tune the game here. Also holds the passive-income model + offline-reward knobs. |
+| `src/persistence.js` | Save/restore state to `localStorage` + autosave triggers (tab close / hide / reload / interval). |
 | `src/state.js` | Game state, buy actions, object grid, tier gating, pub/sub. |
 | `src/lab/laser.js` | Laser emitter + glowing beam(s). |
 | `src/lab/target.js` | The hovering object + crater-based disintegration. |
@@ -62,4 +67,7 @@ npm run build    # production bundle in dist/
 
 Everything tunable lives in the `BASE` object at the top of `progression.js`
 (costs, growth rates, durability, vacuum speed, rewards). The functions below it
-turn those baselines into per-level values.
+turn those baselines into per-level values. Offline progression has its own knobs
+in the `OFFLINE` object (`minSeconds`, `maxSeconds`, `efficiency`); the credited
+rate comes from `passiveCoinsPerSecond()`, which models the laser → shards →
+vacuum chain (so a slow vacuum throttles offline income exactly as in live play).

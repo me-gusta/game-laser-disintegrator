@@ -3,7 +3,7 @@
 // labels/costs and calls the buy actions on state; state.onChange re-renders.
 import $ from 'jquery';
 import * as P from './progression.js';
-import { fmt } from './format.js';
+import { fmt, fmtDuration } from './format.js';
 import {
   state,
   onChange,
@@ -270,6 +270,31 @@ function showTab(name) {
   $('#tabs button').removeClass('active').filter(`[data-tab="${name}"]`).addClass('active');
   $('.panel').removeClass('active');
   $(`#panel-${name}`).addClass('active');
+}
+
+// ------------------------- Offline reward modal ----------------------------
+// Informational pop-up shown on boot when the player earned coins while away.
+// The coins are already credited by the time this is called; clicking Collect
+// just dismisses it.
+export function showOfflineReward({ coins, seconds, capped }) {
+  $('#offline-modal').remove(); // never stack two
+  const $modal = $(`
+    <div id="offline-modal" class="modal-backdrop">
+      <div class="modal">
+        <h2>Welcome back!</h2>
+        <p>You were away for <b>${fmtDuration(seconds)}</b>${capped ? ' <small>(capped at 12h)</small>' : ''}.</p>
+        <p class="sub">Your laser kept disintegrating at 70% efficiency and banked:</p>
+        <div class="reward">+${fmt(coins)} <span>coins</span></div>
+        <button class="collect">Collect</button>
+      </div>
+    </div>`).appendTo('body');
+
+  const close = () => $modal.remove();
+  $modal.find('.collect').on('click', close);
+  // Click the dark backdrop (but not the card) to dismiss too.
+  $modal.on('click', (e) => {
+    if (e.target === $modal[0]) close();
+  });
 }
 
 export function initUI() {

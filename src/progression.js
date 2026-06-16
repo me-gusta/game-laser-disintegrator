@@ -242,3 +242,63 @@ export function objectUpgradeCost(tier, idx, level) {
 
 export const objectNextTierCost = (tier) =>
   Math.ceil(curve(BASE.objNextTierCost, BASE.objNextTierGrowth, tier));
+
+// --------------------------- Offline progression --------------------------
+// While the tab is closed/hidden the laser keeps "working" at a reduced rate.
+// Tuning knobs for that reward live here with the rest of the balance math.
+export const OFFLINE = {
+  minSeconds: 60, //          ignore stints shorter than this (no reward)
+  maxSeconds: 12 * 60 * 60, // cap the credited away-time at 12 hours
+  efficiency: 0.7, //         away-time earns 70% of live passive income
+};
+
+// Estimated *passive* (laser-only, no clicking) coins per second for a given
+// game state. Models the real income chain: the laser kills the spawned object
+// every D/DPS seconds (+ respawn gap), each kill sheds ~objectShardBase shards,
+// and the vacuum collects them — but only up to its own shards/sec, since the
+// floor saturates (shards.js caps live shards), so a slow vacuum throttles
+// income exactly as it does in live play. Objects are averaged over the same
+// progressive-weighted pool that pickSpawn() draws from.
+const OFFLINE_RESPAWN = 0.55; // seconds between a shatter and the next spawn (scene.respawnTimer)
+const OFFLINE_SHARD_WORTH = 1.1; // mean per-shard size multiplier from Shards.burst()
+
+export function passiveCoinsPerSecond(s) {
+  const dps = laserDps(s.laserTier, s.laserPower, s.laserThickness, s.laserBeams);
+  if (dps <= 0) return 0;
+  const sv = shardValue(s.shardLevel);
+
+  // Weighted sums across the unlocked shapes (weight = idx+1, matching pickSpawn).
+  let wCoins = 0; // Σ weight · coins-per-kill
+  let wShards = 0; // Σ weight · shards-per-kill
+  let wTime = 0; //  Σ weight · cycle-time (seconds)
+  for (let idx = 0; idx < s.objects.length; idx++) {
+    if (s.objects[idx] <= 0) continue; // locked shapes never spawn
+    const level = Math.max(1, s.objects[idx]);
+    const weight = idx + 1;
+    const shards = objectShardBase(s.objectTier, idx);
+    const worth = sv * objectReward(s.objectTier, idx, level) * OFFLINE_SHARD_WORTH;
+    const cycle = objectDurability(s.objectTier, idx, level) / dps + OFFLINE_RESPAWN;
+    wCoins += weight * shards * worth;
+    wShards += weight * shards;
+    wTime += weight * cycle;
+  }
+  if (wTime <= 0) return 0;
+
+  const coinProdRate = wCoins / wTime; //  coins/sec the laser *produces*
+  const shardProdRate = wShards / wTime; // shards/sec produced
+  const vacRate = vacuumTotalRate(s.vacuumTier); // shards/sec the vacuum can collect
+  // If the vacuum can't keep up, only a fraction of produced coins is realised.
+  const throttle = shardProdRate > 0 ? Math.min(1, vacRate / shardProdRate) : 1;
+  return coinProdRate * throttle;
+}
+
+// Coins to award for an away stint. Returns the credited amount, the (capped)
+// seconds it was based on, and whether the 12h cap clipped the real elapsed time.
+export function offlineCoins(elapsedSeconds, ratePerSec) {
+  if (!(elapsedSeconds >= OFFLINE.minSeconds) || ratePerSec <= 0) {
+    return { coins: 0, seconds: 0, capped: false };
+  }
+  const seconds = Math.min(elapsedSeconds, OFFLINE.maxSeconds);
+  const coins = Math.floor(ratePerSec * seconds * OFFLINE.efficiency);
+  return { coins, seconds, capped: elapsedSeconds > OFFLINE.maxSeconds };
+}
