@@ -4,10 +4,37 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>game-laser-disintegrator</title>
+    <title>Laser Disintegrator</title>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="game">
+      <header id="topbar">
+        <span class="title">⚡ Laser Disintegrator</span>
+        <span class="wallet"><b id="coins">0</b> coins</span>
+      </header>
+      <div id="layout">
+        <div id="lab-col">
+          <div id="durability">
+            <div class="dur-head">
+              <span class="dur-label">Durability</span>
+              <span id="dur-text">0 / 0</span>
+            </div>
+            <div class="dur-bar"><div id="dur-fill"></div></div>
+          </div>
+          <div id="lab"><!-- pixi canvas mounts here --></div>
+        </div>
+        <aside id="upgrades">
+          <nav id="tabs">
+            <button data-tab="laser" class="active">Laser</button>
+            <button data-tab="shards">Shards</button>
+            <button data-tab="objects">Objects</button>
+          </nav>
+          <div id="panel-laser" class="panel"></div>
+          <div id="panel-shards" class="panel"></div>
+          <div id="panel-objects" class="panel"></div>
+        </aside>
+      </div>
+    </div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

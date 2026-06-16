@@ -1,0 +1,153 @@
+// lab/scene.js
+// The "lab" - assembles the laser, the target object and the shard/vacuum
+// system, and owns the damage -> destruction -> shatter -> respawn loop.
+import { Container } from '@pixi/display';
+import { Graphics } from '@pixi/graphics';
+import * as P from '../progression.js';
+import { state, addCoins, pickSpawn, SHAPES, TIERS } from '../state.js';
+import { Laser } from './laser.js';
+import { Target } from './target.js';
+import { Shards } from './shards.js';
+import { Floaters } from './floaters.js';
+
+const SNAP_THRESHOLDS = [0.72, 0.46, 0.22]; // 3 destruction tiers
+
+export class Scene {
+  constructor(width, height) {
+    this.dims = {
+      width,
+      height,
+      groundY: height - 48,
+      center: { x: width / 2, y: height * 0.6 },
+    };
+    this.container = new Container();
+
+    // Lab background + frame.
+    const bg = new Graphics();
+    bg.beginFill(0x0d0f17).drawRect(0, 0, width, height).endFill();
+    this.container.addChild(bg);
+    this.drawFrame(bg);
+
+    this.laser = new Laser(this.dims);
+    this.target = new Target(this.dims);
+    this.shards = new Shards(this.dims, (worth) => addCoins(worth));
+    this.floaters = new Floaters();
+
+    this.container.addChild(
+      this.shards.container,
+      this.target.container,
+      this.laser.container,
+      this.floaters.container
+    );
+
+    this.lastLaserSig = ''; // tracks laser stats so we only rebuild beams on change
+    this.cur = { tier: 0, idx: 0 }; // object currently being disintegrated
+    this.alive = false;
+    this.respawnTimer = 0;
+    this._laserAccum = 0; // laser damage accumulated between floating-number pops
+    this._laserTimer = 0;
+    this.spawnNext();
+  }
+
+  drawFrame(g) {
+    const { width, height, groundY } = this.dims;
+    // Ground strip.
+    g.beginFill(0x161a26).drawRect(0, groundY, width, height - groundY).endFill();
+    g.lineStyle(2, 0x2b3142, 1).moveTo(0, groundY).lineTo(width, groundY);
+    // Outer frame.
+    g.lineStyle(3, 0x2b3142, 1).drawRect(1.5, 1.5, width - 3, height - 3);
+  }
+
+  currentWorth() {
+    return P.shardValue(state.shardLevel) * P.objectReward(this.cur.tier, this.cur.idx);
+  }
+
+  // Spawn the next object: a progressive-random pick from the current tier.
+  spawnNext() {
+    const o = pickSpawn();
+    this.cur = { tier: o.tier, idx: o.idx };
+    this.maxDur = P.objectDurability(o.tier, o.idx, o.level);
+    this.dur = this.maxDur;
+    this.snaps = 0;
+
+    // Randomized progressive shard budget, split across the 3 snaps + shatter.
+    const total = P.rollShardCount(o.tier, o.idx);
+    this.snapShards = Math.max(2, Math.round(total * 0.18));
+    this.shatterShards = Math.max(3, total - this.snapShards * 3);
+
+    this.target.spawn(SHAPES[o.idx], TIERS[o.tier].color);
+    this.target.container.visible = true;
+    this.target.container.alpha = 1;
+    this.alive = true;
+  }
+
+  // A screen click -> burst of click damage with an immediate floating number.
+  click() {
+    if (!this.alive) return;
+    const d = P.clickDamage(state.clickLevel);
+    this.floaters.pop(d, this.target.container.x, this.target.container.y - 10);
+    this.damage(d);
+  }
+
+  damage(amount) {
+    if (!this.alive) return;
+    this.dur -= amount;
+    // Snap through any destruction tiers we just crossed (a big hit can cross
+    // several at once).
+    while (this.snaps < 3 && this.dur <= this.maxDur * SNAP_THRESHOLDS[this.snaps]) {
+      const p = this.target.addDestruction(this.snaps + 1);
+      this.shards.burst(p.x, p.y, this.snapShards, this.target.color, this.currentWorth());
+      this.snaps++;
+    }
+    if (this.dur <= 0) this.shatter();
+  }
+
+  shatter() {
+    this.alive = false;
+    const c = this.target.container;
+    this.shards.burst(c.x, c.y, this.shatterShards, this.target.color, this.currentWorth());
+    this.target.container.alpha = 0;
+    this.respawnTimer = 550;
+  }
+
+  update(deltaMS) {
+    // Only clamp catastrophic jumps (e.g. returning to a backgrounded tab) so a
+    // single frame can't insta-destroy the object; normal/throttled frames keep
+    // their real elapsed time so coin/damage rates stay wall-clock accurate.
+    const dt = Math.min(deltaMS, 250);
+
+    // Sync laser cosmetics whenever any laser stat changes.
+    const sig = `${state.laserTier}/${state.laserPower}/${state.laserThickness}/${state.laserBeams}`;
+    if (sig !== this.lastLaserSig) {
+      this.lastLaserSig = sig;
+      this.laser.setVisual(P.laserVisual(state.laserTier, state.laserPower, state.laserThickness, state.laserBeams));
+    }
+
+    this.target.update(dt);
+    // Beam strikes the top of the object (object stays visible below the beam).
+    this.laser.update(dt, this.target.topY() + 8);
+
+    if (this.alive) {
+      // Laser deals damage every frame; accumulate it and emit one floating
+      // number every ~0.35s so the screen isn't flooded with tiny ticks.
+      const ld =
+        P.laserDps(state.laserTier, state.laserPower, state.laserThickness, state.laserBeams) * (dt / 1000);
+      this._laserAccum += ld;
+      this._laserTimer += dt;
+      this.damage(ld);
+      if (this._laserTimer >= 350 && this._laserAccum > 0 && this.alive) {
+        this.floaters.pop(this._laserAccum, this.target.container.x, this.target.container.y - 10);
+        this._laserAccum = 0;
+        this._laserTimer = 0;
+      }
+    } else {
+      // After a shatter, wait briefly then spawn a fresh random object.
+      this.respawnTimer -= dt;
+      if (this.respawnTimer <= 0) this.spawnNext();
+    }
+
+    this.shards.setVacuumInterval(P.vacuumInterval(state.vacuumTier));
+    this.shards.update(dt);
+    this.floaters.update(dt);
+  }
+}

@@ -1,60 +1,62 @@
-import './style.css'
-import javascriptLogo from './assets/javascript.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import { setupCounter } from './counter.js'
+// main.js
+// Bootstraps the Pixi renderer (no @pixi/app in this build, so we drive a
+// Renderer + Ticker + stage Container ourselves), mounts the canvas, wires the
+// scene, UI and click-to-damage, then runs the loop.
+import './style.css';
+import { Renderer, BatchRenderer } from '@pixi/core';
+import { extensions } from '@pixi/extensions';
+import { Container } from '@pixi/display';
+import { Ticker } from '@pixi/ticker';
+import { Scene } from './lab/scene.js';
+import { initUI } from './ui.js';
+import { state, addCoins } from './state.js';
+import { fmt } from './format.js';
 
-document.querySelector('#app').innerHTML = `
-<section id="center">
-  <div class="hero">
-    <img src="${heroImg}" class="base" width="170" height="179">
-    <img src="${javascriptLogo}" class="framework" alt="JavaScript logo"/>
-    <img src="${viteLogo}" class="vite" alt="Vite logo" />
-  </div>
-  <div>
-    <h1>Get started</h1>
-    <p>Edit <code>src/main.js</code> and save to test <code>HMR</code></p>
-  </div>
-  <button id="counter" type="button" class="counter"></button>
-</section>
+// Register the batch renderer used to draw Graphics/Sprites (auto-done by
+// @pixi/app normally, but we are wiring core by hand).
+extensions.add(BatchRenderer);
 
-<div class="ticks"></div>
+const LAB_W = 480;
+const LAB_H = 680;
 
-<section id="next-steps">
-  <div id="docs">
-    <svg class="icon" role="presentation" aria-hidden="true"><use href="/icons.svg#documentation-icon"></use></svg>
-    <h2>Documentation</h2>
-    <p>Your questions, answered</p>
-    <ul>
-      <li>
-        <a href="https://vite.dev/" target="_blank">
-          <img class="logo" src="${viteLogo}" alt="" />
-          Explore Vite
-        </a>
-      </li>
-      <li>
-        <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript" target="_blank">
-          <img class="button-icon" src="${javascriptLogo}" alt="">
-          Learn more
-        </a>
-      </li>
-    </ul>
-  </div>
-  <div id="social">
-    <svg class="icon" role="presentation" aria-hidden="true"><use href="/icons.svg#social-icon"></use></svg>
-    <h2>Connect with us</h2>
-    <p>Join the Vite community</p>
-    <ul>
-      <li><a href="https://github.com/vitejs/vite" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#github-icon"></use></svg>GitHub</a></li>
-      <li><a href="https://chat.vite.dev/" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#discord-icon"></use></svg>Discord</a></li>
-      <li><a href="https://x.com/vite_js" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#x-icon"></use></svg>X.com</a></li>
-      <li><a href="https://bsky.app/profile/vite.dev" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#bluesky-icon"></use></svg>Bluesky</a></li>
-    </ul>
-  </div>
-</section>
+const renderer = new Renderer({
+  width: LAB_W,
+  height: LAB_H,
+  backgroundColor: 0x0d0f17,
+  antialias: true,
+  resolution: window.devicePixelRatio || 1,
+  autoDensity: true,
+});
 
-<div class="ticks"></div>
-<section id="spacer"></section>
-`
+document.getElementById('lab').appendChild(renderer.view);
 
-setupCounter(document.querySelector('#counter'))
+const stage = new Container();
+const scene = new Scene(LAB_W, LAB_H);
+stage.addChild(scene.container);
+
+// Click anywhere on the lab -> click damage.
+renderer.view.addEventListener('pointerdown', () => scene.click());
+
+initUI();
+
+// Durability readout above the canvas.
+const durText = document.getElementById('dur-text');
+const durFill = document.getElementById('dur-fill');
+function updateDurability() {
+  const dur = Math.max(0, scene.dur);
+  const max = scene.maxDur || 1;
+  durText.textContent = `${fmt(dur)} / ${fmt(max)}`;
+  durFill.style.width = `${Math.max(0, Math.min(100, (dur / max) * 100))}%`;
+}
+
+const ticker = new Ticker();
+ticker.add(() => {
+  scene.update(ticker.deltaMS);
+  updateDurability();
+  renderer.render(stage);
+});
+ticker.start();
+
+// Console helpers for this in-house tool.
+window.game = { scene, ticker, state };
+window.dev = { addCoins: (x) => addCoins(Number(x) || 0) };
