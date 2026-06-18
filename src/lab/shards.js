@@ -12,8 +12,8 @@ import { VACUUM_TEX, whenReady } from './assets.js';
 const GRAVITY = 0.0011; // px / ms^2
 const RESTITUTION = 0.5; // wall bounciness
 const COL_W = 12; // width of a stacking column (px)
-const VAC_H_MIN = 46; // displayed cleaner height at local level 0
-const VAC_H_MAX = 86; // displayed cleaner height at local level 9
+const VAC_H_MIN = 23; // displayed cleaner height at local level 0
+const VAC_H_MAX = 43; // displayed cleaner height at local level 9
 
 export class Shards {
   // onCollect(worth) is called once per shard the vacuum picks up.
@@ -72,7 +72,7 @@ export class Shards {
       const i = this.vacuums.length;
       const g = this._makeVacuum(i);
       g.x = -60 - 60 * i; // stagger entrances off-screen to the left
-      const v = { g, color: configs[i].color, interval: configs[i].interval, level: configs[i].level || 0, scaleMag: 1, suckTimer: 0, targetCol: -1 };
+      const v = { g, color: configs[i].color, interval: configs[i].interval, level: configs[i].level || 0, scaleMag: 1, suckTimer: 0, targetCol: -1, homeDir: 0 };
       this.vacuums.push(v);
       // Size now if the texture is ready, otherwise once it loads.
       whenReady(g.texture, () => this._scaleVacuum(v));
@@ -231,12 +231,20 @@ export class Shards {
   // biased to ones nearby so it meanders locally instead of zipping across the
   // screen, and preferring somewhere other than where it sits so it keeps moving.
   _pickTarget(v) {
-    const cands = [];
+    let cands = [];
     for (let c = 0; c < this.cols; c++) if (this.columns[c].length) cands.push(c);
     if (cands.length === 0) {
       v.targetCol = -1;
       return;
     }
+    // Coordinate with the other cleaners: avoid piles they're already heading
+    // for so two cleaners split the work instead of dogpiling one shard. Only
+    // when every pile is already claimed do we fall back to the full list.
+    const claimed = new Set();
+    for (const o of this.vacuums) if (o !== v && o.targetCol >= 0) claimed.add(o.targetCol);
+    const free = cands.filter((c) => !claimed.has(c));
+    if (free.length) cands = free;
+
     const near = cands.filter((c) => Math.abs(c * COL_W + COL_W / 2 - v.g.x) < 170);
     let pool = near.length ? near : cands;
     if (pool.length > 1) {
@@ -253,12 +261,18 @@ export class Shards {
     if (v.targetCol < 0 || this.columns[v.targetCol].length === 0) this._pickTarget(v);
 
     if (v.targetCol < 0) {
-      // Nothing left - glide off-screen and hide.
-      v.g.visible = v.g.x > -50;
-      if (v.g.visible) v.g.x -= 0.3 * deltaMS;
+      // Nothing left - glide off the NEAREST edge and hide. Pick the edge once
+      // per home-trip (from where we stand) and commit to it, so crossing the
+      // centre mid-exit can't flip us around. Face the way we travel so the art
+      // never moonwalks home (default art faces left).
+      if (v.homeDir === 0) v.homeDir = v.g.x < this.dims.width / 2 ? -1 : 1;
+      if (v.scaleMag) v.g.scale.x = v.homeDir < 0 ? v.scaleMag : -v.scaleMag;
+      v.g.x += v.homeDir * 0.3 * deltaMS;
+      v.g.visible = v.homeDir < 0 ? v.g.x > -50 : v.g.x < this.dims.width + 50;
       return;
     }
 
+    v.homeDir = 0; // re-acquired a pile; clear the committed exit edge
     v.g.visible = true;
     // Stroll toward the target pile at a deliberate pace, then suck a shard off
     // its TOP. Top-down removal keeps piles collapsing cleanly (no floating).

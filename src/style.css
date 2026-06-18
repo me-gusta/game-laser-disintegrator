@@ -83,7 +83,7 @@ body {
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid var(--border);
-  cursor: crosshair;
+  cursor: pointer;
   user-select: none;
 }
 #lab canvas {
@@ -91,37 +91,45 @@ body {
   border-radius: 12px;
 }
 
-/* Coin wallet overlaid on the canvas "floor" strip (bottom 48px). */
-#lab .wallet {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 48px;
-  z-index: 2;
+/* Right-hand column: coins card stacked above the upgrades panel. */
+#side-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Coins wallet, now its own card above the upgrades panel. */
+#wallet-card {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 0 16px;
-  line-height: 1;
-  font-size: 18px;
-  color: var(--muted);
-  pointer-events: none;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 16px;
 }
-#lab .wallet b {
-  color: var(--gold);
-  font-size: 24px;
-}
-#lab .wallet .coin-icon {
-  height: 26px;
+#wallet-card .coin-icon {
+  height: 28px;
   width: auto;
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.8));
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
+}
+#wallet-card b {
+  color: var(--gold);
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+}
+#wallet-card .coin-label {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
 }
 
 #upgrades {
-  flex: 1;
+  width: 100%;
   min-width: 0;
   background: var(--panel);
   border: 1px solid var(--border);
@@ -299,39 +307,49 @@ button.buy .cost {
   color: var(--muted);
   font-style: italic;
 }
-.objgrid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 6px;
+/* Objects list: one row per object, with its real art (or a dark silhouette
+   while locked) on the left. */
+.objlist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
-.obj {
+.obj-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
   background: var(--panel-2);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 4px;
-  text-align: center;
-  cursor: pointer;
+  border-radius: 10px;
 }
-.obj.active {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent) inset;
+.obj-row .obj-img {
+  flex: 0 0 auto;
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5));
 }
-.obj.locked {
-  cursor: default;
+/* Locked objects show only a dark silhouette of the artwork. */
+.obj-row.locked .obj-img {
+  filter: brightness(0.18) grayscale(1);
+  opacity: 0.85;
 }
-.obj .glyph {
-  font-size: 22px;
-  line-height: 1;
+.obj-row .info {
+  flex: 1 1 auto;
+  min-width: 0;
 }
-.obj .lvl {
-  font-size: 11px;
+.obj-row .name {
+  font-weight: 700;
+  font-size: 15px;
+}
+.obj-row .lvl {
+  font-size: 12px;
   color: var(--muted);
-  margin: 4px 0;
+  margin-top: 3px;
 }
-.obj button.buy {
-  width: 100%;
-  padding: 5px 2px;
-  font-size: 11px;
+.obj-row button.buy {
+  flex: 0 0 auto;
 }
 
 /* Offline-reward modal */

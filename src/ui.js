@@ -4,6 +4,7 @@
 import $ from 'jquery';
 import * as P from './progression.js';
 import { fmt, fmtDuration } from './format.js';
+import { objectImageUrl } from './lab/assets.js';
 import {
   state,
   onChange,
@@ -23,7 +24,7 @@ import {
   TIERS,
 } from './state.js';
 
-const GLYPHS = { circle: '●', rectangle: '▮', triangle: '▲', pentagon: '⬠', hexagon: '⬡' };
+const titleCase = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 // Player-facing description of each beam level (replaces the internal X/x layout
 // notation): index 0..4 == beam level 1..5.
 const BEAM_DESC = ['1 beam', '3 beams (2 narrow)', '3 beams', '5 beams (2 narrow)', '5 beams'];
@@ -206,33 +207,38 @@ function rebuildObjects() {
   objControls = [];
   const t = state.objectTier;
   const tierDef = TIERS[t];
-  const glyphColor = hex(tierDef.color);
 
   const $set = $('<div class="tier current"></div>').appendTo(panel);
   $set.append(
     `<h3>${tierDef.name} Set <span class="badge">tier ${t + 1}/${P.TIER_COUNT}</span></h3>`
   );
-  const $grid = $('<div class="objgrid"></div>').appendTo($set);
+  const $list = $('<div class="objlist"></div>').appendTo($set);
 
   SHAPES.forEach((shape, idx) => {
-    const $cell = $(`
-      <div class="obj">
-        <div class="glyph" style="color:${glyphColor}">${GLYPHS[shape]}</div>
-        <div class="lvl"></div>
+    // One row per object: its real art (a dark silhouette while locked), the
+    // shape name + level/durability, and the unlock/upgrade button.
+    const $row = $(`
+      <div class="obj-row">
+        <img class="obj-img" src="${objectImageUrl(t, idx)}" alt="${shape}" />
+        <div class="info">
+          <div class="name">${titleCase(shape)}</div>
+          <div class="lvl"></div>
+        </div>
         <button class="buy"></button>
-      </div>`).appendTo($grid);
+      </div>`).appendTo($list);
 
-    $cell.find('button').on('click', () => buyObject(idx));
+    $row.find('button').on('click', () => buyObject(idx));
 
     objControls.push(() => {
       const lvl = state.objects[idx];
       const unlocked = objectUnlocked(idx);
-      const $lvl = $cell.find('.lvl');
-      const $btn = $cell.find('button');
-      $cell.toggleClass('locked', lvl === 0 && !unlocked);
+      const $lvl = $row.find('.lvl');
+      const $btn = $row.find('button');
+      // Locked objects (not yet bought) render as a dark silhouette of the art.
+      $row.toggleClass('locked', lvl === 0);
 
       if (lvl >= P.MAX_LEVEL) {
-        $lvl.text(`Lv ${lvl}/${P.MAX_LEVEL}`);
+        $lvl.text(`Lv ${lvl}/${P.MAX_LEVEL} · Maxed`);
         $btn.html('Maxed').prop('disabled', true);
       } else if (lvl === 0 && !unlocked) {
         // Gated: the previous shape hasn't been unlocked yet. Say so, instead of
@@ -246,7 +252,7 @@ function rebuildObjects() {
         $btn.prop('disabled', state.coins < cost);
       } else {
         const cost = P.objectUpgradeCost(t, idx, lvl);
-        $lvl.html(`Lv ${lvl}/${P.MAX_LEVEL}<br>${fmt(P.objectDurability(t, idx, lvl))} durability`);
+        $lvl.html(`Lv ${lvl}/${P.MAX_LEVEL} · ${fmt(P.objectDurability(t, idx, lvl))} durability`);
         $btn.html(`Upgrade<br><span class="cost">${fmt(cost)}</span>`);
         $btn.prop('disabled', state.coins < cost);
       }

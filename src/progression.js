@@ -150,7 +150,7 @@ export function laserDps(tier, power, thickness, beams) {
 export function laserVisual(tier, power, thickness, beams) {
   const color = LASER_TIER_COLORS[tier];
   const coreWidth = BASE.laserBaseWidth + thickness * BASE.laserWidthPerLevel;
-  const spacing = coreWidth * 1.6 + 7;
+  const spacing = coreWidth * 2.0 + 22;
   const brightness = 0.5 + 0.1 * power; // power 1..5 -> 0.6..1.0
   const beamList = BEAM_LAYOUTS[beams - 1].map((b) => ({
     dx: b.pos * spacing,

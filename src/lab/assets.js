@@ -28,11 +28,16 @@ export const VACUUM_TEX = [1, 2, 3].map((n) => Texture.from(`${BASE}/vacuum/${pa
 // set; later tiers get their own theme folder under /images/objects/<theme>/.
 export const OBJECT_THEMES = Array.from({ length: TIER_COUNT }, () => 'egypt');
 
+// URL of the object art at colour `tier`, shape `idx` (0..4). The single source
+// of truth for the path, shared by the Pixi texture (below) and the DOM <img> in
+// the Objects tab so both always show the same artwork.
+export const objectImageUrl = (tier, idx) =>
+  `${BASE}/objects/${OBJECT_THEMES[tier] || OBJECT_THEMES[0]}/${pad2(idx + 1)}.png`;
+
 // Texture for the object at colour `tier`, shape `idx` (0..4). Cached by URL via
 // Texture.from, so repeated spawns of the same object reuse one GPU texture.
 export function objectTexture(tier, idx) {
-  const theme = OBJECT_THEMES[tier] || OBJECT_THEMES[0];
-  return Texture.from(`${BASE}/objects/${theme}/${pad2(idx + 1)}.png`);
+  return Texture.from(objectImageUrl(tier, idx));
 }
 
 // Run `cb(width, height)` once `tex` has real pixel dimensions — immediately if

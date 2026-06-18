@@ -11,7 +11,6 @@
       <div id="layout">
         <div id="lab-col">
           <div id="lab">
-            <span class="wallet"><b id="coins">0</b><img class="coin-icon" src="/images/coin.png" alt="coins" /></span>
             <!-- pixi canvas mounts here -->
           </div>
           <div id="durability">
@@ -22,16 +21,23 @@
             <div class="dur-bar"><div id="dur-fill"></div></div>
           </div>
         </div>
-        <aside id="upgrades">
-          <nav id="tabs">
-            <button data-tab="laser" class="active">Laser</button>
-            <button data-tab="coins">Coins</button>
-            <button data-tab="objects">Objects</button>
-          </nav>
-          <div id="panel-laser" class="panel"></div>
-          <div id="panel-coins" class="panel"></div>
-          <div id="panel-objects" class="panel"></div>
-        </aside>
+        <div id="side-col">
+          <div id="wallet-card">
+            <img class="coin-icon" src="/images/coin.png" alt="coins" />
+            <b id="coins">0</b>
+            <span class="coin-label">coins</span>
+          </div>
+          <aside id="upgrades">
+            <nav id="tabs">
+              <button data-tab="laser" class="active">Laser</button>
+              <button data-tab="coins">Coins</button>
+              <button data-tab="objects">Objects</button>
+            </nav>
+            <div id="panel-laser" class="panel"></div>
+            <div id="panel-coins" class="panel"></div>
+            <div id="panel-objects" class="panel"></div>
+          </aside>
+        </div>
       </div>
     </div>
     <script type="module" src="/src/main.js"></script>

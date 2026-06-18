@@ -92,7 +92,7 @@ export class Scene {
     this.snapShards = Math.max(2, Math.round(total * 0.18));
     this.shatterShards = Math.max(3, total - this.snapShards * 3);
 
-    this.target.spawn(o.tier, o.idx, TIERS[o.tier].color);
+    this.target.spawn(o.tier, o.idx, TIERS[o.tier].color, o.level);
     this.target.container.visible = true;
     this.target.container.alpha = 1;
     this.alive = true;
@@ -149,7 +149,7 @@ export class Scene {
     const surface = t.topY() + 6;
     const deep = t.container.y + t.halfH * 0.35;
     const frac = this.maxDur ? Math.max(0, Math.min(1, this.dur / this.maxDur)) : 1;
-    this.laser.update(dt, surface + (deep - surface) * frac, surface);
+    this.laser.update(dt, surface + (deep - surface) * frac, surface, this.alive);
 
     if (this.alive) {
       // Laser deals damage every frame; accumulate it and emit one floating
