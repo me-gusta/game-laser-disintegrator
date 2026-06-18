@@ -30,7 +30,9 @@ const renderer = new Renderer({
   height: LAB_H,
   backgroundColor: 0x0d0f17,
   antialias: true,
-  resolution: window.devicePixelRatio || 1,
+  // Cap at 2: on a 3x display the canvas + every GlowFilter render-to-texture
+  // pass would otherwise run at ~9x the pixels for no visible gain at this size.
+  resolution: Math.min(window.devicePixelRatio || 1, 2),
   autoDensity: true,
 });
 

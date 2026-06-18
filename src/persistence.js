@@ -34,7 +34,7 @@ const SAVE_KEYS = [
 
 export function saveGame() {
   try {
-    const data = { v: 1, savedAt: Date.now() };
+    const data = { v: 2, savedAt: Date.now() };
     for (const k of SAVE_KEYS) data[k] = state[k];
     localStorage.setItem(KEY, JSON.stringify(data));
   } catch {

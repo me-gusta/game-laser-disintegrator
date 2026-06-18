@@ -75,6 +75,7 @@ export class Scene {
     // (compared field-by-field in update) rather than a joined string, so the
     // per-frame change check allocates nothing. -1 forces the first build.
     this._lastLaser = { tier: -1, power: -1, thickness: -1, beams: -1 };
+    this._dps = 0; // cached laserDps; recomputed only when a laser stat changes
     this._vacTier = -1; //   tracks vacuumTier so we only rebuild cleaner configs on change
     this.cur = { tier: 0, idx: 0, level: 1 }; // object currently being disintegrated
     this.alive = false;
@@ -159,6 +160,9 @@ export class Scene {
       ll.thickness = state.laserThickness;
       ll.beams = state.laserBeams;
       this.laser.setVisual(P.laserVisual(state.laserTier, state.laserPower, state.laserThickness, state.laserBeams));
+      // DPS only moves when a stat changes, so cache it here instead of running
+      // four Math.pow()s every frame in the damage step below.
+      this._dps = P.laserDps(state.laserTier, state.laserPower, state.laserThickness, state.laserBeams);
     }
 
     this.target.update(dt);
@@ -176,8 +180,7 @@ export class Scene {
       // Laser deals damage every frame; accumulate it and emit the running total
       // as a floating number the moment a fresh erosion hole appears — so digits
       // erupt from the holes themselves rather than the object's centre.
-      const ld =
-        P.laserDps(state.laserTier, state.laserPower, state.laserThickness, state.laserBeams) * (dt / 1000);
+      const ld = this._dps * (dt / 1000);
       this._laserAccum += ld;
       this.damage(ld);
       // Drive the continuous on-screen erosion from the live durability fraction;

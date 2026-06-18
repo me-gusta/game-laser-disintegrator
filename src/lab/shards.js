@@ -43,6 +43,12 @@ export class Shards {
     // colour. They appear one at a time as the Vacuum upgrade is levelled, and
     // each strolls independently sucking up resting shards.
     this.vacuums = []; // { g, color, interval, suckTimer, targetCol }
+
+    // Reusable scratch buffers for _pickTarget so choosing a pile (which happens
+    // once per shard collected — tens of times/sec at a maxed vacuum) allocates
+    // nothing. Ping-ponged between the candidate-narrowing passes.
+    this._bufA = [];
+    this._bufB = [];
   }
 
   // Build a vacuum-cleaner sprite for cleaner index `i` (its own artwork). The
@@ -133,6 +139,7 @@ export class Shards {
         col: -1,
         consumed: 0,
         spin: (Math.random() - 0.5) * 0.01,
+        _i: this.shards.length, // own index in `shards`, kept live for O(1) removal
       });
     }
     // Cap live shards so the scene never thrashes.
@@ -173,8 +180,21 @@ export class Shards {
   // resting above it down by its height so the pile collapses to fill the gap
   // instead of leaving a floating crust.
   _remove(shard) {
-    const i = this.shards.indexOf(shard);
-    if (i >= 0) this.shards.splice(i, 1);
+    // O(1) swap-pop from the flat list via the shard's tracked index — no
+    // indexOf scan / tail shift on the hot collect path. Order isn't significant
+    // (the array is just the live set; piles track their own stack order).
+    const arr = this.shards;
+    const i = shard._i;
+    // Not in the live set (already removed): bail before touching the pile or
+    // recycling the sprite again — a double _release would hand the same sprite
+    // to two live shards out of the pool.
+    if (!(i >= 0 && i < arr.length && arr[i] === shard)) return;
+    const last = arr.pop();
+    if (last !== shard) {
+      arr[i] = last;
+      last._i = i;
+    }
+    shard._i = -1;
     if (shard.resting && shard.col >= 0) {
       const colArr = this.columns[shard.col];
       const ci = colArr.indexOf(shard);
@@ -250,27 +270,54 @@ export class Shards {
   // biased to ones nearby so it meanders locally instead of zipping across the
   // screen, and preferring somewhere other than where it sits so it keeps moving.
   _pickTarget(v) {
-    let cands = [];
-    for (let c = 0; c < this.cols; c++) if (this.columns[c].length) cands.push(c);
-    if (cands.length === 0) {
+    // Narrow candidate piles through a series of preference passes, ping-ponging
+    // between two reusable buffers so the whole pick allocates nothing. Each pass
+    // writes its survivors into the scratch buffer; if any survive it becomes the
+    // new pool (and the old pool becomes the next scratch — its contents are no
+    // longer needed once narrowed).
+    const bufs = [this._bufA, this._bufB];
+    bufs[0].length = 0;
+    bufs[1].length = 0;
+
+    // All non-empty columns.
+    let pi = 0;
+    let pool = bufs[0];
+    for (let c = 0; c < this.cols; c++) if (this.columns[c].length) pool.push(c);
+    if (pool.length === 0) {
       v.targetCol = -1;
       return;
     }
-    // Coordinate with the other cleaners: avoid piles they're already heading
-    // for so two cleaners split the work instead of dogpiling one shard. Only
-    // when every pile is already claimed do we fall back to the full list.
-    const claimed = new Set();
-    for (const o of this.vacuums) if (o !== v && o.targetCol >= 0) claimed.add(o.targetCol);
-    const free = cands.filter((c) => !claimed.has(c));
-    if (free.length) cands = free;
 
-    const near = cands.filter((c) => Math.abs(c * COL_W + COL_W / 2 - v.g.x) < 170);
-    let pool = near.length ? near : cands;
+    // Coordinate with the other cleaners: prefer piles none of them are already
+    // heading for, so two cleaners split the work instead of dogpiling one shard.
+    // Only when every pile is claimed do we keep the full list. (≤3 cleaners, so
+    // the inner scan is cheaper than building a Set.)
+    let scratch = bufs[1 - pi];
+    scratch.length = 0;
+    for (const c of pool) {
+      let claimed = false;
+      for (const o of this.vacuums) {
+        if (o !== v && o.targetCol === c) { claimed = true; break; }
+      }
+      if (!claimed) scratch.push(c);
+    }
+    if (scratch.length) { pool = scratch; pi = 1 - pi; }
+
+    // Prefer piles near the cleaner so it meanders locally.
+    scratch = bufs[1 - pi];
+    scratch.length = 0;
+    for (const c of pool) if (Math.abs(c * COL_W + COL_W / 2 - v.g.x) < 170) scratch.push(c);
+    if (scratch.length) { pool = scratch; pi = 1 - pi; }
+
+    // Prefer somewhere other than where we already sit, so the cleaner keeps moving.
     if (pool.length > 1) {
       const curCol = this._colAt(v.g.x);
-      const elsewhere = pool.filter((c) => Math.abs(c - curCol) > 1);
-      if (elsewhere.length) pool = elsewhere;
+      scratch = bufs[1 - pi];
+      scratch.length = 0;
+      for (const c of pool) if (Math.abs(c - curCol) > 1) scratch.push(c);
+      if (scratch.length) { pool = scratch; pi = 1 - pi; }
     }
+
     v.targetCol = pool[Math.floor(Math.random() * pool.length)];
   }
 

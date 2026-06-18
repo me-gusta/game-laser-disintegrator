@@ -349,7 +349,7 @@ export function passiveCoinsPerSecond(s) {
 }
 
 // Coins to award for an away stint. Returns the credited amount, the (capped)
-// seconds it was based on, and whether the 12h cap clipped the real elapsed time.
+// seconds it was based on, and whether the 24h cap clipped the real elapsed time.
 export function offlineCoins(elapsedSeconds, ratePerSec) {
   if (!(elapsedSeconds >= OFFLINE.minSeconds) || ratePerSec <= 0) {
     return { coins: 0, seconds: 0, capped: false };
