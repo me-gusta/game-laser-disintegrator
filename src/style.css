@@ -88,6 +88,7 @@ body {
 }
 #lab canvas {
   display: block;
+  border-radius: 12px;
 }
 
 /* Coin wallet overlaid on the canvas "floor" strip (bottom 48px). */
@@ -199,7 +200,6 @@ body {
   justify-content: space-between;
   padding: 4px 4px 12px;
   margin-bottom: 4px;
-  border-bottom: 1px solid var(--border);
 }
 .tier-head .tier-name {
   font-size: 17px;
