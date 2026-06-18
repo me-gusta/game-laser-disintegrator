@@ -19,6 +19,7 @@ const DISPLAY_H = 175; //  displayed object height at level 1 (grows with level)
 const LEVEL_SIZE_GAIN = 0.5; // +50% display height by the max level ("moderate")
 const RT_MAX_H = 360; //   cap the RenderTexture height (crisp enough; bounds VRAM)
 const MAX_EROSION = 22; //  fine holes punched by the time the object is destroyed
+const NO_HOLES = []; //    shared empty result for setDamage's frequent no-op frames
 
 export class Target {
   constructor(dims, renderer) {
@@ -142,8 +143,8 @@ export class Target {
   // a damage number from each fresh hole.
   setDamage(frac) {
     this.frac = Math.max(0, Math.min(1, frac));
-    if (!this.ready) return [];
-    if (Math.abs(this.frac - this.lastDrawnFrac) < 0.015) return [];
+    if (!this.ready) return NO_HOLES;
+    if (Math.abs(this.frac - this.lastDrawnFrac) < 0.015) return NO_HOLES;
     this.lastDrawnFrac = this.frac;
     const dmg = 1 - this.frac;
     const target = Math.floor(dmg * MAX_EROSION);

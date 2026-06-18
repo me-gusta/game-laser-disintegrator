@@ -56,6 +56,8 @@ export class Laser {
     this.time = 0;
     this.visual = null;
     this.targetY = dims.center.y; // beam terminus (scene sets it inside the object)
+    this._drawnBottom = -1; //    targetY the beam geometry was last drawn for
+    //                            (geometry is only rebuilt when the terminus moves)
     this.fire = 1; // firing intensity 0..1; eased toward 1 while an object is present,
     //               toward 0 when there's nothing to disintegrate (gun powers down).
   }
@@ -127,18 +129,24 @@ export class Laser {
       this.beamLayer.addChild(g);
       return g;
     });
-    this.drawBeams(1);
+    this.drawBeams();
     this.layoutGuns(0, 0, 0); // park the guns at rest before the first frame
   }
 
-  drawBeams(flicker) {
+  // Rebuild the beam geometry for the CURRENT terminus. Only the per-frame
+  // firing/flicker intensity used to live here, forcing a full re-tessellation
+  // of three rounded rects per beam every frame; that factor is now applied as a
+  // cheap per-beam `alpha` in update() instead, so this only runs when the beam's
+  // length actually changes (see the threshold guard in update). Base per-fill
+  // alphas bake in the beam's own `intensity`; alpha then scales by flicker*fire.
+  drawBeams() {
     const top = MUZZLE_Y;
     const bottom = this.targetY;
     const color = this.visual.color;
     for (const g of this.beams) {
       const s = g._spec;
       const half = s.width / 2;
-      const I = s.intensity * flicker * this.fire;
+      const I = s.intensity;
 
       // Top at the emitter (s.dx), bottom converged toward the object center.
       // Beams whose emitter sits outside ±AIM_HALF angle inward so they actually
@@ -160,6 +168,7 @@ export class Laser {
       g.rotation = theta;
       g._theta = theta; // shared with the matching gun (layoutGuns)
     }
+    this._drawnBottom = bottom;
   }
 
   // Aim each gun straight down its beam and apply the firing recoil. The gun is
@@ -199,7 +208,16 @@ export class Laser {
     const f = this.fire;
 
     const flicker = 0.85 + 0.15 * Math.sin(this.time * 0.02);
-    if (this.beams) this.drawBeams(flicker);
+    if (this.beams) {
+      // Rebuild geometry only when the terminus actually moved (the object bobs
+      // and erodes slowly, so this is a handful of redraws/sec, not 60). The
+      // firing/flicker intensity is applied as a uniform per-beam alpha — the
+      // exact product s.intensity * flicker * fire as before, but with the
+      // intensity baked into the geometry's fill alpha by drawBeams().
+      if (Math.abs(this.targetY - this._drawnBottom) > 1) this.drawBeams();
+      const beamAlpha = flicker * f;
+      for (const g of this.beams) g.alpha = beamAlpha;
+    }
 
     // Beam group glow + muzzle lens fade out with the firing intensity.
     if (this.visual) this.glow.outerStrength = this.visual.glow * f;

@@ -62,6 +62,28 @@ export class Floaters {
     this.container = new Container();
     this.items = [];
     this.styles = new Map(); // laser colour -> TextStyle (built once per colour)
+    // Free list of idle Text objects. Pops are frequent (one per collected shard
+    // plus per damage hole), so we reuse Text instances instead of allocating a
+    // fresh canvas + GPU texture per pop and destroying it on expiry. Bounded by
+    // MAX_LIVE since we only ever release what we spawned.
+    this.pool = [];
+  }
+
+  // Borrow a Text from the pool (or make one), set to show `str` in `style`.
+  _acquire(str, style) {
+    const t = this.pool.pop();
+    if (!t) return new Text(str, style);
+    t.text = str; //   reuses the Text's existing canvas/texture in place
+    t.style = style;
+    t.visible = true;
+    return t;
+  }
+
+  // Return a spent Text to the pool (kept alive, just detached + hidden).
+  _release(t) {
+    this.container.removeChild(t);
+    t.visible = false;
+    this.pool.push(t);
   }
 
   // A TextStyle whose fill is the vivid form of `color`, cached so repeated
@@ -86,26 +108,28 @@ export class Floaters {
   // typically a hole's centre. `color` is the current laser colour; the fill is
   // a saturated version of it.
   pop(amount, x, y, color = 0xffffff) {
-    this._spawn(new Text(fmt(amount), this.styleFor(color)), x, y, amount);
+    this._spawn(fmt(amount), this.styleFor(color), x, y, amount);
   }
 
   // Spawn a coin number (a vacuum picking up a shard) at the shard's position.
   // Same look/motion as a damage number but dark-yellow and prefixed with "+".
   popCoin(amount, x, y) {
-    this._spawn(new Text(`+${fmt(amount)}`, this.coinStyle()), x, y, amount, 0.8);
+    this._spawn(`+${fmt(amount)}`, this.coinStyle(), x, y, amount, 0.8);
   }
 
-  // Place a prepared Text near (x, y) and start its float/fade. The number is
-  // nudged a short random distance off-centre so it reads as erupting from
-  // around the spot rather than dead centre, and so stacked pops scatter.
-  // `sizeMul` scales the whole number down (coins read a touch smaller than hits).
-  _spawn(t, x, y, amount, sizeMul = 1) {
+  // Acquire a pooled Text showing `str`/`style`, place it near (x, y) and start
+  // its float/fade. The number is nudged a short random distance off-centre so it
+  // reads as erupting from around the spot rather than dead centre, and so
+  // stacked pops scatter. `sizeMul` scales the whole number down (coins read a
+  // touch smaller than hits).
+  _spawn(str, style, x, y, amount, sizeMul = 1) {
     if (this.items.length >= MAX_LIVE) {
       const old = this.items.shift();
-      this.container.removeChild(old.t);
-      old.t.destroy();
+      this._release(old.t);
     }
+    const t = this._acquire(str, style);
     t.anchor.set(0.5);
+    t.alpha = 1; // reset (a reused Text may have faded out on its last life)
     const a = Math.random() * Math.PI * 2;
     const off = 8 + Math.random() * 16; // 8..24px from the centre
     t.x = x + Math.cos(a) * off;
@@ -127,8 +151,7 @@ export class Floaters {
       const k = it.life / it.ttl;
       it.t.alpha = k < 0.55 ? 1 : Math.max(0, 1 - (k - 0.55) / 0.45);
       if (it.life >= it.ttl) {
-        this.container.removeChild(it.t);
-        it.t.destroy();
+        this._release(it.t);
         this.items.splice(i, 1);
       }
     }

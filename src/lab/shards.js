@@ -5,9 +5,8 @@
 // vacuum slides in, sucks them up one at a time (rate set by its tier) and each
 // collected shard pays out coins.
 import { Container } from '@pixi/display';
-import { Graphics } from '@pixi/graphics';
 import { Sprite } from '@pixi/sprite';
-import { VACUUM_TEX, whenReady } from './assets.js';
+import { VACUUM_TEX, SHARD, whenReady } from './assets.js';
 
 const GRAVITY = 0.0011; // px / ms^2
 const RESTITUTION = 0.5; // wall bounciness
@@ -26,6 +25,10 @@ export class Shards {
     this.layer = new Container();
     this.container.addChild(this.layer);
     this.shards = [];
+    // Free list of idle shard sprites. We only ever release what we spawned and
+    // live shards are capped (600), so this stays bounded. Recycling avoids a
+    // per-shard Sprite + GPU-resource churn during the endless idle loop.
+    this.pool = [];
 
     // Stacking: a height-map of column surface heights. A landing shard sits on
     // top of whatever is already in its column instead of all piling at groundY,
@@ -102,11 +105,9 @@ export class Shards {
       const s = 2.5 + sizeF * 3; // half-extent of the diamond
       const shardWorth = Math.max(1, Math.round(worth * sizeF));
 
-      const g = new Graphics();
-      g.beginFill(color, 0.95).drawPolygon([0, -s, s, 0, 0, s, -s, 0]).endFill();
+      const g = this._acquire(color, s);
       g.x = x;
       g.y = y;
-      this.layer.addChild(g);
 
       let vx;
       let vy;
@@ -140,6 +141,29 @@ export class Shards {
     }
   }
 
+  // Borrow a shard sprite from the pool (or make one), tinted to `color` and
+  // scaled so its half-extent is `s` px. The shared SHARD texture is white, so the
+  // tint colours it and every shard batches into one draw call.
+  _acquire(color, s) {
+    const g = this.pool.pop() || new Sprite(SHARD);
+    g.anchor.set(0.5);
+    g.tint = color;
+    g.alpha = 0.95;
+    g.rotation = 0;
+    g.visible = true;
+    const half = g.texture.width / 2 || 1;
+    g.scale.set(s / half);
+    this.layer.addChild(g);
+    return g;
+  }
+
+  // Detach a spent shard sprite and return it to the pool (kept alive + hidden).
+  _release(g) {
+    this.layer.removeChild(g);
+    g.visible = false;
+    this.pool.push(g);
+  }
+
   _colAt(x) {
     const c = Math.floor(x / COL_W);
     return c < 0 ? 0 : c >= this.cols ? this.cols - 1 : c;
@@ -161,13 +185,7 @@ export class Shards {
         this.stacks[shard.col] = Math.min(this.dims.groundY, this.stacks[shard.col] + shard.consumed);
       }
     }
-    this.layer.removeChild(shard.g);
-  }
-
-  restingCount() {
-    let n = 0;
-    for (const s of this.shards) if (s.resting) n++;
-    return n;
+    this._release(shard.g);
   }
 
   update(deltaMS) {

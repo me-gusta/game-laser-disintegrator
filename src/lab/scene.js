@@ -72,6 +72,7 @@ export class Scene {
     );
 
     this.lastLaserSig = ''; // tracks laser stats so we only rebuild beams on change
+    this._vacTier = -1; //   tracks vacuumTier so we only rebuild cleaner configs on change
     this.cur = { tier: 0, idx: 0, level: 1 }; // object currently being disintegrated
     this.alive = false;
     this.respawnTimer = 0;
@@ -184,7 +185,12 @@ export class Scene {
       if (this.respawnTimer <= 0) this.spawnNext();
     }
 
-    this.shards.setVacuums(P.vacuumCleaners(state.vacuumTier));
+    // The cleaner roster only changes when the Vacuum upgrade is bought; rebuild
+    // (and the array+objects vacuumCleaners allocates) only then, not every frame.
+    if (state.vacuumTier !== this._vacTier) {
+      this._vacTier = state.vacuumTier;
+      this.shards.setVacuums(P.vacuumCleaners(state.vacuumTier));
+    }
     this.shards.update(dt);
     this.floaters.update(dt);
   }

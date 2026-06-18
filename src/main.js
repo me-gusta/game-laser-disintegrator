@@ -86,10 +86,16 @@ function durColor(frac) {
   return 'rgb(60, 208, 90)';
 }
 
+// Skip the DOM writes when the bar hasn't moved enough to matter (~0.5%). The
+// bar/text change slowly while firing and not at all during the respawn pause, so
+// this avoids a layout/style write on most frames.
+let lastDurFrac = -1;
 function updateDurability() {
   const dur = Math.max(0, scene.dur);
   const max = scene.maxDur || 1;
   const frac = dur / max;
+  if (Math.abs(frac - lastDurFrac) < 0.005) return;
+  lastDurFrac = frac;
   durText.textContent = `${fmt(dur)} / ${fmt(max)}`;
   durFill.style.width = `${Math.max(0, Math.min(100, frac * 100))}%`;
   durFill.style.background = durColor(frac);

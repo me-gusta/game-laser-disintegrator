@@ -26,6 +26,18 @@ import {
 
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
 
+// Diffed DOM writes. The full panel refresh runs once per animation frame and
+// touches every row, but almost nothing changes between frames (a button's text
+// only moves when its cost does, on a buy). These skip the actual DOM write —
+// and the style/layout work it triggers — when the value is unchanged since last
+// time, tracked via an expando on the node. On a steady frame they're pure
+// comparisons and write the DOM zero times.
+const tx = ($el, v) => { const n = $el[0]; if (n && n.__tx !== v) { n.textContent = v; n.__tx = v; } };
+const htm = ($el, v) => { const n = $el[0]; if (n && n.__htm !== v) { n.innerHTML = v; n.__htm = v; } };
+const dis = ($el, v) => { const n = $el[0]; if (n && n.__dis !== v) { n.disabled = v; n.__dis = v; } };
+const vis = ($el, v) => { const n = $el[0]; if (n && n.__vis !== v) { $el.toggle(v); n.__vis = v; } };
+const cls = ($el, name, on) => { const n = $el[0]; const k = '__c_' + name; if (n && n[k] !== on) { $el.toggleClass(name, on); n[k] = on; } };
+
 const staticControls = []; // refresh() callbacks for the fixed laser/shards rows
 let objControls = []; //      refresh() callbacks for the (rebuilt) objects panel
 let objSig = null; //         structural signature of the objects panel
@@ -55,13 +67,13 @@ function nextTierButton(panel, build, controls) {
   $btn.on('click', () => build.buy());
   controls.push(() => {
     if (build.maxedTier()) {
-      $btn.html('Tier maxed').prop('disabled', true);
+      htm($btn, 'Tier maxed'); dis($btn, true);
     } else if (!build.ready()) {
-      $btn.html('NEXT TIER<br><small>Max every stat to unlock</small>').prop('disabled', true);
+      htm($btn, 'NEXT TIER<br><small>Max every stat to unlock</small>'); dis($btn, true);
     } else {
       const cost = build.cost();
-      $btn.html(`NEXT TIER → ${build.nextName()}<br><span class="cost">${fmt(cost)}</span>`);
-      $btn.prop('disabled', state.coins < cost);
+      htm($btn, `NEXT TIER → ${build.nextName()}<br><span class="cost">${fmt(cost)}</span>`);
+      dis($btn, state.coins < cost);
     }
   });
 }
@@ -72,14 +84,14 @@ function laserStatRow(panel, { label, key, cost, buy, help }) {
     buy,
     refresh(els) {
       const lvl = state[key];
-      els.name.text(`${label} · Lv ${lvl}/${P.MAX_LEVEL}`);
-      els.sub.text(help);
+      tx(els.name, `${label} · Lv ${lvl}/${P.MAX_LEVEL}`);
+      tx(els.sub, help);
       if (lvl >= P.MAX_LEVEL) {
-        els.btn.html('Maxed').prop('disabled', true);
+        htm(els.btn, 'Maxed'); dis(els.btn, true);
       } else {
         const c = cost(state.laserTier, lvl);
-        els.btn.html(`Upgrade<br><span class="cost">${fmt(c)}</span>`);
-        els.btn.prop('disabled', state.coins < c);
+        htm(els.btn, `Upgrade<br><span class="cost">${fmt(c)}</span>`);
+        dis(els.btn, state.coins < c);
       }
     },
   });
@@ -94,18 +106,19 @@ function buildLaser() {
     buy: buyClick,
     refresh(els) {
       const lvl = state.clickLevel;
-      els.name.text(`Click Power · Lv ${lvl}`);
-      els.sub.html(`<span class="val">${fmt(P.clickDamage(lvl, state.objectTier))}</span> damage per click`);
+      tx(els.name, `Click Power · Lv ${lvl}`);
+      htm(els.sub, `<span class="val">${fmt(P.clickDamage(lvl, state.objectTier))}</span> damage per click`);
       const cost = P.clickCost(lvl);
-      els.btn.html(`Upgrade<br><span class="cost">${fmt(cost)}</span>`);
-      els.btn.prop('disabled', state.coins < cost);
+      htm(els.btn, `Upgrade<br><span class="cost">${fmt(cost)}</span>`);
+      dis(els.btn, state.coins < cost);
     },
   });
 
   const $head = $('<div class="tier-head"></div>').appendTo(panel);
   staticControls.push(() => {
     const dps = P.laserDps(state.laserTier, state.laserPower, state.laserThickness, state.laserBeams);
-    $head.html(
+    htm(
+      $head,
       `<span class="tier-name" style="color:${hex(P.LASER_TIER_COLORS[state.laserTier])}">` +
         `${P.LASER_TIER_NAMES[state.laserTier]} Laser</span>` +
         `<span class="val">${fmt(dps)} DPS</span>`
@@ -157,11 +170,11 @@ function buildCoins() {
     buy: buyShard,
     refresh(els) {
       const lvl = state.shardLevel;
-      els.name.text(`Shard Value · Lv ${lvl}`);
-      els.sub.html(`<span class="val">${fmt(P.shardValue(lvl))}×</span> coins per shard`);
+      tx(els.name, `Shard Value · Lv ${lvl}`);
+      htm(els.sub, `<span class="val">${fmt(P.shardValue(lvl))}×</span> coins per shard`);
       const cost = P.shardCost(lvl);
-      els.btn.html(`Upgrade<br><span class="cost">${fmt(cost)}</span>`);
-      els.btn.prop('disabled', state.coins < cost);
+      htm(els.btn, `Upgrade<br><span class="cost">${fmt(cost)}</span>`);
+      dis(els.btn, state.coins < cost);
     },
   });
 
@@ -171,17 +184,17 @@ function buildCoins() {
       const tier = state.vacuumTier;
       const maxed = tier >= P.BASE.vacuumTiers - 1;
       const cleaners = P.vacuumCleaners(tier).length;
-      els.name.text(`Vacuum · Lv ${tier + 1}/${P.BASE.vacuumTiers}`);
-      els.sub.html(
+      tx(els.name, `Vacuum · Lv ${tier + 1}/${P.BASE.vacuumTiers}`);
+      htm(els.sub,
         `<span class="val">${P.vacuumTotalRate(tier).toFixed(1)}</span> shards/sec · ` +
           `${cleaners} cleaner${cleaners > 1 ? 's' : ''}`
       );
       if (maxed) {
-        els.btn.html('Maxed').prop('disabled', true);
+        htm(els.btn, 'Maxed'); dis(els.btn, true);
       } else {
         const cost = P.vacuumCost(tier);
-        els.btn.html(`Upgrade<br><span class="cost">${fmt(cost)}</span>`);
-        els.btn.prop('disabled', state.coins < cost);
+        htm(els.btn, `Upgrade<br><span class="cost">${fmt(cost)}</span>`);
+        dis(els.btn, state.coins < cost);
       }
     },
   });
@@ -224,38 +237,40 @@ function rebuildObjects() {
         <span class="obj-check" title="Maxed out">✓</span>
       </div>`).appendTo($list);
 
-    $row.find('button').on('click', () => buyObject(idx));
+    // Cache the row's dynamic handles once — the per-frame refresh below must not
+    // re-run jQuery's .find() traversal on every tick.
+    const $btn = $row.find('button');
+    const $lvl = $row.find('.lvl');
+    $btn.on('click', () => buyObject(idx));
 
     objControls.push(() => {
       const lvl = state.objects[idx];
       const unlocked = objectUnlocked(idx);
-      const $lvl = $row.find('.lvl');
-      const $btn = $row.find('button');
       // Locked objects (not yet bought) render as a black silhouette of the art.
-      $row.toggleClass('locked', lvl === 0);
+      cls($row, 'locked', lvl === 0);
       // A maxed item shows the checkmark in place of the (now useless) button.
       const objMax = P.objectMaxLevel(t);
       const maxed = lvl >= objMax;
-      $row.toggleClass('maxed', maxed);
-      $btn.toggle(!maxed);
+      cls($row, 'maxed', maxed);
+      vis($btn, !maxed);
 
       if (maxed) {
-        $lvl.text(`Lv ${lvl}/${objMax} · Maxed`);
+        tx($lvl, `Lv ${lvl}/${objMax} · Maxed`);
       } else if (lvl === 0 && !unlocked) {
         // Gated: the previous item isn't maxed yet. Say so, instead of showing a
         // buyable-looking Unlock+cost the player can't actually use.
-        $lvl.text('Locked');
-        $btn.html('Max out the<br>previous item').prop('disabled', true);
+        tx($lvl, 'Locked');
+        htm($btn, 'Max out the<br>previous item'); dis($btn, true);
       } else if (lvl === 0) {
         const cost = P.objectUnlockCost(t, idx);
-        $lvl.text('Locked');
-        $btn.html(`Unlock<br><span class="cost">${fmt(cost)}</span>`);
-        $btn.prop('disabled', state.coins < cost);
+        tx($lvl, 'Locked');
+        htm($btn, `Unlock<br><span class="cost">${fmt(cost)}</span>`);
+        dis($btn, state.coins < cost);
       } else {
         const cost = P.objectUpgradeCost(t, idx, lvl);
-        $lvl.html(`Lv ${lvl}/${objMax} · ${fmt(P.objectDurability(t, idx, lvl))} durability`);
-        $btn.html(`Upgrade<br><span class="cost">${fmt(cost)}</span>`);
-        $btn.prop('disabled', state.coins < cost);
+        tx($lvl, `Lv ${lvl}/${objMax} · ${fmt(P.objectDurability(t, idx, lvl))} durability`);
+        htm($btn, `Upgrade<br><span class="cost">${fmt(cost)}</span>`);
+        dis($btn, state.coins < cost);
       }
     });
   });
@@ -274,8 +289,24 @@ function rebuildObjects() {
 }
 
 // ----------------------------- wiring --------------------------------------
+// The full panel refresh (structure + every row's affordability) is relatively
+// expensive — it walks every upgrade row via jQuery. State can change many times
+// per frame (each shard the vacuum collects credits coins -> notify), so instead
+// of re-rendering per coin we coalesce every notification into at most ONE
+// refresh per animation frame. The coin counter rides along on that same tick,
+// which is plenty smooth for a counter.
+let $coins = null; //         cached so we don't re-query #coins each refresh
+let refreshQueued = false;
+
 function refresh() {
-  $('#coins').text(fmtCoins(state.coins));
+  if (refreshQueued) return;
+  refreshQueued = true;
+  requestAnimationFrame(runRefresh);
+}
+
+function runRefresh() {
+  refreshQueued = false;
+  tx($coins, fmtCoins(state.coins));
   const sig = objectsSignature();
   if (sig !== objSig) {
     objSig = sig;
@@ -317,12 +348,13 @@ export function showOfflineReward({ coins, seconds, capped }) {
 }
 
 export function initUI() {
+  $coins = $('#coins');
   buildLaser();
   buildCoins();
   $('#tabs button').on('click', function () {
     showTab($(this).data('tab'));
   });
   onChange(refresh);
-  refresh();
+  runRefresh(); // initial synchronous paint (don't wait a frame for first render)
   showTab('laser');
 }

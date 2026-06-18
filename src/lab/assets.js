@@ -92,3 +92,26 @@ function makeBrush(size = 256) {
 }
 
 export const BRUSH = makeBrush();
+
+// A unit diamond (rotated square), white so it can be .tint-ed to the object's
+// tier colour. Every shard particle is a pooled Sprite of THIS one texture rather
+// than a per-shard Graphics — far less allocation/GC churn over a long idle
+// session, and all shards batch into a single draw call (one shared texture).
+// Half-extent in texture space is size/2; callers scale by (shardSize / half).
+function makeDiamond(size = 32) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const h = size / 2;
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.moveTo(h, 0);
+  ctx.lineTo(size, h);
+  ctx.lineTo(h, size);
+  ctx.lineTo(0, h);
+  ctx.closePath();
+  ctx.fill();
+  return Texture.from(c);
+}
+
+export const SHARD = makeDiamond();
