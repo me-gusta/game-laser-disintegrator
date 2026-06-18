@@ -57,10 +57,18 @@ export const BASE = {
   laserNextTierGrowth: COST_TIER_MULT, // x per tier (> income mult, so the leap is earned each time)
 
   // --- Click power (instant damage per screen click) ---
-  // Kept SMALL vs object durability (~3% of a fresh object): clicking ASSISTS a
-  // kill, it never trivialises the ~9s TTK (clicks apply straight to dur).
-  clickDmg: 1.2, //          damage of a click at level 0
+  // DESIGN ("tappy start, laser end"): at tier 0 the click is the POWERFUL tool
+  // and the laser is the slow background. A fresh click does ~1/5 of the starter
+  // object's durability, so 4-5 taps break it — versus ~10s if you just watch the
+  // laser. Click damage scales per object tier by clickTierMult (= 30), which is
+  // FAR below the object/laser tier mult (= 190), so each tier the click does
+  // proportionally less: taps-to-break grow ~5 -> ~32 -> ~200 -> ... Clicking
+  // fades to a minor assist over ~2 tiers and the laser becomes the main event
+  // (the watchable ~10s kill). Upgrade cost (1.8^lvl, no tier term) outruns the
+  // damage curve, so a player cannot economically keep the click relevant.
+  clickDmg: 9, //            damage of a click at level 0, tier 0 (=> ~5 taps on starter)
   clickDmgGrowth: 1.4,
+  clickTierMult: 30, //      damage x per object tier (<< 190: click falls behind objects)
   clickCost: 9,
   clickCostGrowth: 1.8,
 
@@ -100,13 +108,23 @@ export const BASE = {
   objCostShape: 1.7, //         cost multiplier per shape index
   objUpgradeGrowth: 1.8, //     cost multiplier per object level (rises faster than
   //                            the flat reward growth -> decelerating buys)
-  objMaxLevel: 5, //            levels per object before it is "maxed"
+  // Object upgrade DEPTH per tier (max levels before an object is "maxed").
+  // Shallow early tiers ramp up to the full 5-level grind, so the opening tiers
+  // are a quick checklist and the deep grind starts later. Indexed by 0-based
+  // tier; tiers past the end use the last value. The UI shows tiers 1-indexed,
+  // so this reads as "tier 1 -> 2 levels, tier 2 -> 3, tier 3+ -> 5".
+  objMaxLevels: [2, 3, 5],
   objNextTierCost: 1200, //     first objects NEXT TIER button: a multi-minute idle save
   objNextTierGrowth: COST_TIER_MULT, // x per tier (> income mult, so the leap is earned each time)
 };
 
-export const MAX_LEVEL = 5; // shared cap for laser stats and object levels
+export const MAX_LEVEL = 5; // cap for laser stats (objects use objectMaxLevel)
 export const TIER_COUNT = 7; // colour tiers for both laser and objects
+
+// Max object level for a given (0-based) tier — see BASE.objMaxLevels. Tiers past
+// the table fall back to its last entry (the full grind).
+export const objectMaxLevel = (tier) =>
+  BASE.objMaxLevels[Math.min(Math.max(tier, 0), BASE.objMaxLevels.length - 1)];
 
 // Generic helper: geometric cost/value curve.
 const curve = (base, growth, level) => base * Math.pow(growth, level);
@@ -171,7 +189,12 @@ export const laserBeamsCost = (tier, level) => laserStatCost(BASE.laserBeamsCost
 export const laserNextTierCost = (tier) => Math.ceil(curve(BASE.laserNextTierCost, BASE.laserNextTierGrowth, tier));
 
 // ----------------------------- Click ---------------------------------------
-export const clickDamage = (level) => curve(BASE.clickDmg, BASE.clickDmgGrowth, level);
+// Click damage rises with the upgrade level (within a tier) and, gently, with the
+// object tier — but the per-tier factor (clickTierMult = 30) is far below object
+// durability's per-tier factor (190), so the click steadily falls behind: it is
+// the dominant tool at tier 0 and a fading assist thereafter.
+export const clickDamage = (level, tier = 0) =>
+  curve(BASE.clickDmg, BASE.clickDmgGrowth, level) * Math.pow(BASE.clickTierMult, tier);
 export const clickCost = (level) => Math.ceil(curve(BASE.clickCost, BASE.clickCostGrowth, level));
 
 // -------------------------- Shard value ------------------------------------

@@ -108,16 +108,16 @@ export function buyVacuum() {
 
 // --- objects ---------------------------------------------------------------
 // Objects unlock one-by-one in order: an object becomes available only once the
-// previous one has been fully MAXED (level == MAX_LEVEL). You cannot buy a new
+// previous one has been fully MAXED (level == objectMaxLevel(tier)). You cannot buy a new
 // object while the previous one still has upgrades left.
 export function objectUnlocked(idx) {
-  return idx === 0 || state.objects[idx - 1] >= P.MAX_LEVEL;
+  return idx === 0 || state.objects[idx - 1] >= P.objectMaxLevel(state.objectTier);
 }
 
 export function buyObject(idx) {
   if (!objectUnlocked(idx)) return false;
   const level = state.objects[idx];
-  if (level >= P.MAX_LEVEL) return false;
+  if (level >= P.objectMaxLevel(state.objectTier)) return false;
   if (level === 0) {
     if (!spend(P.objectUnlockCost(state.objectTier, idx))) return false;
   } else {
@@ -130,7 +130,7 @@ export function buyObject(idx) {
 
 // The whole set is "maxed" when every shape is at the level cap.
 export function objectTierMaxed() {
-  return state.objects.every((l) => l >= P.MAX_LEVEL);
+  return state.objects.every((l) => l >= P.objectMaxLevel(state.objectTier));
 }
 
 export function buyObjectNextTier() {
@@ -161,7 +161,7 @@ export function devNextLaserTier() {
 
 // Max every object of the current tier, then jump to the next colour tier.
 export function devNextObjectTier() {
-  state.objects = state.objects.map(() => P.MAX_LEVEL);
+  state.objects = state.objects.map(() => P.objectMaxLevel(state.objectTier));
   if (state.objectTier < P.TIER_COUNT - 1) {
     state.objectTier++;
     state.objects = [1, 0, 0, 0, 0];

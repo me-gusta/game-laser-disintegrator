@@ -10,7 +10,7 @@ import { fmt } from '../format.js';
 // Shared look for every number. `fill` is overridden per laser-colour below.
 const BASE = {
   fontFamily: 'Impact, "Arial Black", Haettenschweiler, sans-serif',
-  fontSize: 30,
+  fontSize: 34,
   fontWeight: 'bold',
   stroke: 0xffffff, //      white outline
   strokeThickness: 4,
@@ -75,27 +75,46 @@ export class Floaters {
     return st;
   }
 
-  // Spawn a number that floats up from near (x, y) — typically a hole's centre.
-  // It's nudged a short random distance off-centre so it reads as erupting from
-  // around the hole's rim rather than dead centre, and so stacked hits scatter.
-  // `color` is the current laser colour; the fill is a saturated version of it.
+  // Style for coin pickups: dark-yellow ink on the shared white outline. Built
+  // once and cached.
+  coinStyle() {
+    if (!this._coinStyle) this._coinStyle = new TextStyle({ ...BASE, fill: 0xc9a227 });
+    return this._coinStyle;
+  }
+
+  // Spawn a damage number (laser/click) that floats up from near (x, y) —
+  // typically a hole's centre. `color` is the current laser colour; the fill is
+  // a saturated version of it.
   pop(amount, x, y, color = 0xffffff) {
+    this._spawn(new Text(fmt(amount), this.styleFor(color)), x, y, amount);
+  }
+
+  // Spawn a coin number (a vacuum picking up a shard) at the shard's position.
+  // Same look/motion as a damage number but dark-yellow and prefixed with "+".
+  popCoin(amount, x, y) {
+    this._spawn(new Text(`+${fmt(amount)}`, this.coinStyle()), x, y, amount, 0.8);
+  }
+
+  // Place a prepared Text near (x, y) and start its float/fade. The number is
+  // nudged a short random distance off-centre so it reads as erupting from
+  // around the spot rather than dead centre, and so stacked pops scatter.
+  // `sizeMul` scales the whole number down (coins read a touch smaller than hits).
+  _spawn(t, x, y, amount, sizeMul = 1) {
     if (this.items.length >= MAX_LIVE) {
       const old = this.items.shift();
       this.container.removeChild(old.t);
       old.t.destroy();
     }
-    const t = new Text(fmt(amount), this.styleFor(color));
     t.anchor.set(0.5);
     const a = Math.random() * Math.PI * 2;
-    const off = 8 + Math.random() * 16; // 8..24px from the hole centre
+    const off = 8 + Math.random() * 16; // 8..24px from the centre
     t.x = x + Math.cos(a) * off;
     t.y = y + Math.sin(a) * off;
-    // Size scales with the hit: a sliver of damage pops a tiny number, and it
-    // grows linearly to full size at 100+ damage. A small random jitter keeps
-    // equal hits from looking stamped-out.
-    const grow = 0.6 + 0.4 * Math.min(1, Math.max(0, amount) / 100); // 0.6..1.0
-    t.scale.set(grow * (0.92 + Math.random() * 0.16));
+    // Size scales with the amount, but stays readable even for the small single-
+    // digit values of early game: numbers start near full size and reach full
+    // size by ~40. A small random jitter keeps equal pops from looking stamped.
+    const grow = 0.85 + 0.15 * Math.min(1, Math.max(0, amount) / 40); // 0.85..1.0
+    t.scale.set(sizeMul * grow * (0.92 + Math.random() * 0.16));
     this.container.addChild(t);
     this.items.push({ t, life: 0, ttl: 850, vy: -0.06 - Math.random() * 0.03 });
   }

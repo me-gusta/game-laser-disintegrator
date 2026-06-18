@@ -13,7 +13,7 @@ import { Sprite } from '@pixi/sprite';
 import { Texture, RenderTexture } from '@pixi/core';
 import { BLEND_MODES } from '@pixi/constants';
 import { objectTexture, whenReady, BRUSH } from './assets.js';
-import { MAX_LEVEL } from '../progression.js';
+import { objectMaxLevel } from '../progression.js';
 
 const DISPLAY_H = 175; //  displayed object height at level 1 (grows with level)
 const LEVEL_SIZE_GAIN = 0.5; // +50% display height by the max level ("moderate")
@@ -56,6 +56,7 @@ export class Target {
     this.dispScale = 1; //    RenderTexture px -> display px
     this.color = 0xffffff; // tier colour used to tint the shard particles
     this.level = 1; //        object level -> bigger on-screen as it is upgraded
+    this.maxLevel = objectMaxLevel(0); // this tier's level cap (set in spawn)
     this.lastHole = null; //  world-space centre of the most recently punched hole
   }
 
@@ -72,6 +73,7 @@ export class Target {
   spawn(tier, idx, color, level = 1) {
     this.color = color;
     this.level = level;
+    this.maxLevel = objectMaxLevel(tier);
     this.frac = 1;
     this.lastDrawnFrac = 1;
     this.erosionCount = 0;
@@ -105,8 +107,9 @@ export class Target {
     // 1 + LEVEL_SIZE_GAIN), a "moderate" payoff for upgrading. Then clamp the
     // scale so a big object never spills past the lab's sides or punches through
     // the ground / off the top (the object bobs ±6px, so leave a margin).
-    const lvl = Math.min(Math.max(this.level, 1), MAX_LEVEL);
-    const sizeF = 1 + ((lvl - 1) / (MAX_LEVEL - 1)) * LEVEL_SIZE_GAIN;
+    const cap = Math.max(this.maxLevel, 2); // avoid /0 when cap is 1
+    const lvl = Math.min(Math.max(this.level, 1), cap);
+    const sizeF = 1 + ((lvl - 1) / (cap - 1)) * LEVEL_SIZE_GAIN;
     let dispScale = (DISPLAY_H * sizeF) / this.rtH;
     const maxHalfW = this.dims.width * 0.45;
     if ((this.rtW * dispScale) / 2 > maxHalfW) dispScale = (maxHalfW * 2) / this.rtW;

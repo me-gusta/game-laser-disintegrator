@@ -51,8 +51,13 @@ export class Scene {
 
     this.laser = new Laser(this.dims);
     this.target = new Target(this.dims, renderer);
-    this.shards = new Shards(this.dims, (worth) => addCoins(worth));
     this.floaters = new Floaters();
+    // Each shard the vacuum collects pays out coins and pops a dark-yellow "+N"
+    // coin number at the shard's spot (same float/fade as damage numbers).
+    this.shards = new Shards(this.dims, (worth, x, y) => {
+      addCoins(worth);
+      this.floaters.popCoin(worth, x, y);
+    });
 
     // Z-order: beams (laser.container) sit BEHIND the target so the object
     // occludes the beam tip — the beam plunges into it instead of hanging in
@@ -102,7 +107,7 @@ export class Scene {
   // back to the object's top while the object is still pristine and hole-less.
   click() {
     if (!this.alive) return;
-    const d = P.clickDamage(state.clickLevel);
+    const d = P.clickDamage(state.clickLevel, state.objectTier);
     this.damage(d);
     const c = P.LASER_TIER_COLORS[state.laserTier];
     const h = this.target.lastHole;

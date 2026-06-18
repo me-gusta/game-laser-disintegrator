@@ -95,7 +95,7 @@ function buildLaser() {
     refresh(els) {
       const lvl = state.clickLevel;
       els.name.text(`Click Power · Lv ${lvl}`);
-      els.sub.html(`<span class="val">${fmt(P.clickDamage(lvl))}</span> damage per click`);
+      els.sub.html(`<span class="val">${fmt(P.clickDamage(lvl, state.objectTier))}</span> damage per click`);
       const cost = P.clickCost(lvl);
       els.btn.html(`Upgrade<br><span class="cost">${fmt(cost)}</span>`);
       els.btn.prop('disabled', state.coins < cost);
@@ -234,12 +234,13 @@ function rebuildObjects() {
       // Locked objects (not yet bought) render as a black silhouette of the art.
       $row.toggleClass('locked', lvl === 0);
       // A maxed item shows the checkmark in place of the (now useless) button.
-      const maxed = lvl >= P.MAX_LEVEL;
+      const objMax = P.objectMaxLevel(t);
+      const maxed = lvl >= objMax;
       $row.toggleClass('maxed', maxed);
       $btn.toggle(!maxed);
 
       if (maxed) {
-        $lvl.text(`Lv ${lvl}/${P.MAX_LEVEL} · Maxed`);
+        $lvl.text(`Lv ${lvl}/${objMax} · Maxed`);
       } else if (lvl === 0 && !unlocked) {
         // Gated: the previous item isn't maxed yet. Say so, instead of showing a
         // buyable-looking Unlock+cost the player can't actually use.
@@ -252,7 +253,7 @@ function rebuildObjects() {
         $btn.prop('disabled', state.coins < cost);
       } else {
         const cost = P.objectUpgradeCost(t, idx, lvl);
-        $lvl.html(`Lv ${lvl}/${P.MAX_LEVEL} · ${fmt(P.objectDurability(t, idx, lvl))} durability`);
+        $lvl.html(`Lv ${lvl}/${objMax} · ${fmt(P.objectDurability(t, idx, lvl))} durability`);
         $btn.html(`Upgrade<br><span class="cost">${fmt(cost)}</span>`);
         $btn.prop('disabled', state.coins < cost);
       }

@@ -14,6 +14,7 @@ const RESTITUTION = 0.5; // wall bounciness
 const COL_W = 12; // width of a stacking column (px)
 const VAC_H_MIN = 23; // displayed cleaner height at local level 0
 const VAC_H_MAX = 43; // displayed cleaner height at local level 9
+const VAC_LINGER_MS = 800; // pause on the last shard's spot before heading home
 
 export class Shards {
   // onCollect(worth) is called once per shard the vacuum picks up.
@@ -72,7 +73,7 @@ export class Shards {
       const i = this.vacuums.length;
       const g = this._makeVacuum(i);
       g.x = -60 - 60 * i; // stagger entrances off-screen to the left
-      const v = { g, color: configs[i].color, interval: configs[i].interval, level: configs[i].level || 0, scaleMag: 1, suckTimer: 0, targetCol: -1, homeDir: 0 };
+      const v = { g, color: configs[i].color, interval: configs[i].interval, level: configs[i].level || 0, scaleMag: 1, suckTimer: 0, targetCol: -1, homeDir: 0, homeDelay: 0 };
       this.vacuums.push(v);
       // Size now if the texture is ready, otherwise once it loads.
       whenReady(g.texture, () => this._scaleVacuum(v));
@@ -261,6 +262,14 @@ export class Shards {
     if (v.targetCol < 0 || this.columns[v.targetCol].length === 0) this._pickTarget(v);
 
     if (v.targetCol < 0) {
+      // Just cleared the last shard: linger on the spot for a beat instead of
+      // bolting home, so the cleaner reads as "finishing up" rather than fleeing.
+      // (A fresh pile during the linger re-acquires below, cancelling the exit.)
+      if (v.homeDir === 0 && v.homeDelay > 0) {
+        v.homeDelay -= deltaMS;
+        v.g.visible = true;
+        return; // hold position while the linger runs down
+      }
       // Nothing left - glide off the NEAREST edge and hide. Pick the edge once
       // per home-trip (from where we stand) and commit to it, so crossing the
       // centre mid-exit can't flip us around. Face the way we travel so the art
@@ -273,6 +282,7 @@ export class Shards {
     }
 
     v.homeDir = 0; // re-acquired a pile; clear the committed exit edge
+    v.homeDelay = VAC_LINGER_MS; // keep the linger topped up for when shards run out
     v.g.visible = true;
     // Stroll toward the target pile at a deliberate pace, then suck a shard off
     // its TOP. Top-down removal keeps piles collapsing cleanly (no floating).
@@ -296,7 +306,8 @@ export class Shards {
   }
 
   collect(shard) {
+    const { x, y } = shard.g; // capture before _remove detaches the sprite
     this._remove(shard);
-    this.onCollect(shard.worth);
+    this.onCollect(shard.worth, x, y);
   }
 }
