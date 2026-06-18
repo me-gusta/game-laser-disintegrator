@@ -24,6 +24,9 @@ import {
 } from './state.js';
 
 const GLYPHS = { circle: '●', rectangle: '▮', triangle: '▲', pentagon: '⬠', hexagon: '⬡' };
+// Player-facing description of each beam level (replaces the internal X/x layout
+// notation): index 0..4 == beam level 1..5.
+const BEAM_DESC = ['1 beam', '3 beams (2 narrow)', '3 beams', '5 beams (2 narrow)', '5 beams'];
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
 
 const staticControls = []; // refresh() callbacks for the fixed laser/shards rows
@@ -55,9 +58,9 @@ function nextTierButton(panel, build, controls) {
   $btn.on('click', () => build.buy());
   controls.push(() => {
     if (build.maxedTier()) {
-      $btn.html('MAX TIER REACHED').prop('disabled', true);
+      $btn.html('Tier maxed').prop('disabled', true);
     } else if (!build.ready()) {
-      $btn.html('NEXT TIER<br><small>unlocks after maxing out</small>').prop('disabled', true);
+      $btn.html('NEXT TIER<br><small>Max every stat to unlock</small>').prop('disabled', true);
     } else {
       const cost = build.cost();
       $btn.html(`NEXT TIER → ${build.nextName()}<br><span class="cost">${fmt(cost)}</span>`);
@@ -75,7 +78,7 @@ function laserStatRow(panel, { label, key, cost, buy, value }) {
       els.name.text(`${label} · Lv ${lvl}/${P.MAX_LEVEL}`);
       els.sub.html(value(lvl));
       if (lvl >= P.MAX_LEVEL) {
-        els.btn.html('MAX').prop('disabled', true);
+        els.btn.html('Maxed').prop('disabled', true);
       } else {
         const c = cost(state.laserTier, lvl);
         els.btn.html(`Upgrade<br><span class="cost">${fmt(c)}</span>`);
@@ -88,13 +91,27 @@ function laserStatRow(panel, { label, key, cost, buy, value }) {
 function buildLaser() {
   const panel = $('#panel-laser').empty();
 
+  // Click Power: manual damage you deal by clicking the object yourself. Sits at
+  // the top of the tab; unlike the beam stats below, it persists across tiers.
+  upgradeRow(panel, {
+    buy: buyClick,
+    refresh(els) {
+      const lvl = state.clickLevel;
+      els.name.text(`Click Power · Lv ${lvl}`);
+      els.sub.html(`<span class="val">${fmt(P.clickDamage(lvl))}</span> damage per click`);
+      const cost = P.clickCost(lvl);
+      els.btn.html(`Upgrade<br><span class="cost">${fmt(cost)}</span>`);
+      els.btn.prop('disabled', state.coins < cost);
+    },
+  });
+
   const $head = $('<div class="tier-head"></div>').appendTo(panel);
   staticControls.push(() => {
     const dps = P.laserDps(state.laserTier, state.laserPower, state.laserThickness, state.laserBeams);
     $head.html(
       `<span class="tier-name" style="color:${hex(P.LASER_TIER_COLORS[state.laserTier])}">` +
         `${P.LASER_TIER_NAMES[state.laserTier]} Laser</span>` +
-        `<span class="val">${fmt(dps)} dmg/sec</span>`
+        `<span class="val">${fmt(dps)} DPS</span>`
     );
   });
 
@@ -105,7 +122,7 @@ function buildLaser() {
     buy: buyLaserThickness,
     value: (lvl) => {
       const w = P.BASE.laserBaseWidth + lvl * P.BASE.laserWidthPerLevel;
-      return `<span class="val">${w.toFixed(0)}px</span> beam width`;
+      return `<span class="val">${w.toFixed(0)}px</span> wide`;
     },
   });
   laserStatRow(panel, {
@@ -113,7 +130,7 @@ function buildLaser() {
     key: 'laserPower',
     cost: P.laserPowerCost,
     buy: buyLaserPower,
-    value: (lvl) => `<span class="val">brightness ${lvl}/${P.MAX_LEVEL}</span> · more damage`,
+    value: () => `<span class="val">+more damage</span> · brighter beam`,
   });
   laserStatRow(panel, {
     label: 'Beams',
@@ -121,7 +138,7 @@ function buildLaser() {
     cost: P.laserBeamsCost,
     buy: buyLaserBeams,
     value: (lvl) =>
-      `pattern <span class="val mono">${P.BEAM_PATTERNS[lvl - 1]}</span> · ${P.beamSum(lvl)}× beam power`,
+      `<span class="val">${BEAM_DESC[lvl - 1]}</span> · ${P.beamSum(lvl)}× beam power`,
   });
 
   nextTierButton(
@@ -137,21 +154,11 @@ function buildLaser() {
   );
 }
 
-// ----------------------------- Shards tab ----------------------------------
-function buildShards() {
-  const panel = $('#panel-shards').empty();
-
-  upgradeRow(panel, {
-    buy: buyClick,
-    refresh(els) {
-      const lvl = state.clickLevel;
-      els.name.text(`Click Power · Lv ${lvl}`);
-      els.sub.html(`<span class="val">${fmt(P.clickDamage(lvl))}</span> damage per click`);
-      const cost = P.clickCost(lvl);
-      els.btn.html(`Upgrade<br><span class="cost">${fmt(cost)}</span>`);
-      els.btn.prop('disabled', state.coins < cost);
-    },
-  });
+// ----------------------------- Coins tab -----------------------------------
+// Income upgrades only: what each shard is worth, and how fast the vacuum
+// collects them. (Click Power — a damage upgrade — now lives in the Laser tab.)
+function buildCoins() {
+  const panel = $('#panel-coins').empty();
 
   upgradeRow(panel, {
     buy: buyShard,
@@ -177,7 +184,7 @@ function buildShards() {
           `${cleaners} cleaner${cleaners > 1 ? 's' : ''}`
       );
       if (maxed) {
-        els.btn.html('MAX').prop('disabled', true);
+        els.btn.html('Maxed').prop('disabled', true);
       } else {
         const cost = P.vacuumCost(tier);
         els.btn.html(`Upgrade<br><span class="cost">${fmt(cost)}</span>`);
@@ -226,16 +233,21 @@ function rebuildObjects() {
 
       if (lvl >= P.MAX_LEVEL) {
         $lvl.text(`Lv ${lvl}/${P.MAX_LEVEL}`);
-        $btn.html('MAX').prop('disabled', true);
+        $btn.html('Maxed').prop('disabled', true);
+      } else if (lvl === 0 && !unlocked) {
+        // Gated: the previous shape hasn't been unlocked yet. Say so, instead of
+        // showing a buyable-looking Unlock+cost the player can't actually use.
+        $lvl.text('Locked');
+        $btn.html('🔒 Unlock the<br>previous shape').prop('disabled', true);
       } else if (lvl === 0) {
         const cost = P.objectUnlockCost(t, idx);
         $lvl.text('Locked');
         $btn.html(`Unlock<br><span class="cost">${fmt(cost)}</span>`);
-        $btn.prop('disabled', !unlocked || state.coins < cost);
+        $btn.prop('disabled', state.coins < cost);
       } else {
         const cost = P.objectUpgradeCost(t, idx, lvl);
-        $lvl.html(`Lv ${lvl}/${P.MAX_LEVEL}<br>${fmt(P.objectDurability(t, idx, lvl))} hp`);
-        $btn.html(`Up<br><span class="cost">${fmt(cost)}</span>`);
+        $lvl.html(`Lv ${lvl}/${P.MAX_LEVEL}<br>${fmt(P.objectDurability(t, idx, lvl))} durability`);
+        $btn.html(`Upgrade<br><span class="cost">${fmt(cost)}</span>`);
         $btn.prop('disabled', state.coins < cost);
       }
     });
@@ -282,8 +294,8 @@ export function showOfflineReward({ coins, seconds, capped }) {
     <div id="offline-modal" class="modal-backdrop">
       <div class="modal">
         <h2>Welcome back!</h2>
-        <p>You were away for <b>${fmtDuration(seconds)}</b>${capped ? ' <small>(capped at 12h)</small>' : ''}.</p>
-        <p class="sub">Your laser kept disintegrating at 70% efficiency and banked:</p>
+        <p>You were away for <b>${fmtDuration(seconds)}</b>${capped ? ' <small>(we count up to 24h away)</small>' : ''}.</p>
+        <p class="sub">Your laser ran at full power and banked:</p>
         <div class="reward">+${fmt(coins)} <span>coins</span></div>
         <button class="collect">Collect</button>
       </div>
@@ -299,7 +311,7 @@ export function showOfflineReward({ coins, seconds, capped }) {
 
 export function initUI() {
   buildLaser();
-  buildShards();
+  buildCoins();
   $('#tabs button').on('click', function () {
     showTab($(this).data('tab'));
   });

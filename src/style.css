@@ -100,7 +100,7 @@ body {
   z-index: 2;
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: flex-end;
   gap: 8px;
   padding: 0 16px;
   line-height: 1;

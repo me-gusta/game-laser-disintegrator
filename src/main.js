@@ -46,7 +46,7 @@ renderer.view.addEventListener('pointerdown', () => scene.click());
 initUI();
 
 // Offline progression: credit coins the laser "earned" while the tab was gone
-// (>=60s, capped at 12h, at 70% of the live passive rate). Granted after the UI
+// (>=60s, counted up to 24h, at the full live passive rate). Granted after the UI
 // has subscribed so the coin counter updates, then we immediately re-save to
 // stamp a fresh savedAt (otherwise a quick reload would award the gap twice).
 if (loaded && loaded.savedAt) {
