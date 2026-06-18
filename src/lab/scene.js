@@ -54,10 +54,15 @@ export class Scene {
     this.shards = new Shards(this.dims, (worth) => addCoins(worth));
     this.floaters = new Floaters();
 
+    // Z-order: beams (laser.container) sit BEHIND the target so the object
+    // occludes the beam tip — the beam plunges into it instead of hanging in
+    // the air. The impact flare (laser.impact) sits ABOVE the target as a hot
+    // spot on the surface.
     this.container.addChild(
       this.shards.container,
-      this.target.container,
       this.laser.container,
+      this.target.container,
+      this.laser.impact,
       this.floaters.container
     );
 
@@ -136,8 +141,15 @@ export class Scene {
     }
 
     this.target.update(dt);
-    // Beam strikes the top of the object (object stays visible below the beam).
-    this.laser.update(dt, this.target.topY() + 8);
+    // Beam terminus: deep inside the object body when pristine, retracting back
+    // toward the surface as durability falls — so as the object erodes away the
+    // tip always stays behind remaining material / under the impact flare and
+    // never hangs in open space. The flare sits on the top surface.
+    const t = this.target;
+    const surface = t.topY() + 6;
+    const deep = t.container.y + t.halfH * 0.35;
+    const frac = this.maxDur ? Math.max(0, Math.min(1, this.dur / this.maxDur)) : 1;
+    this.laser.update(dt, surface + (deep - surface) * frac, surface);
 
     if (this.alive) {
       // Laser deals damage every frame; accumulate it and emit one floating

@@ -7,6 +7,7 @@ import { Container } from '@pixi/display';
 import { Graphics } from '@pixi/graphics';
 import { Sprite } from '@pixi/sprite';
 import { Texture } from '@pixi/core';
+import { BLEND_MODES } from '@pixi/constants';
 import { GlowFilter } from '@pixi/filter-glow';
 import { LASER_TEX, whenReady } from './assets.js';
 
@@ -39,9 +40,18 @@ export class Laser {
     this.lens = new Graphics();
     this.container.addChild(this.lens);
 
+    // Impact flare at the point the beam meets the object. Lives in its OWN
+    // container (added to the scene ABOVE the target by the scene) so it reads
+    // as a hot spot on the object's surface — while the beams themselves are
+    // layered BEHIND the target and plunge into it. Additive blend = bright bloom.
+    this.impact = new Container();
+    this.flareG = new Graphics();
+    this.flareG.blendMode = BLEND_MODES.ADD;
+    this.impact.addChild(this.flareG);
+
     this.time = 0;
     this.visual = null;
-    this.targetY = dims.center.y; // updated by the scene to the object's top
+    this.targetY = dims.center.y; // beam terminus (scene sets it inside the object)
   }
 
   // Rebuild the static parts (emitter sprite, lenses, beam graphics) for a new
@@ -65,7 +75,33 @@ export class Laser {
         .endFill();
     }
 
+    this.drawFlare(visual.color, visual.power);
     this.rebuildBeams();
+  }
+
+  // Static art for the impact flare: a white-hot core, a coloured halo and a
+  // ring of spikes. Sized by laser power. Animated (scale/alpha/spin) in update.
+  drawFlare(color, power) {
+    const g = this.flareG;
+    g.clear();
+    const base = 11 + power * 3.5; // core radius grows with power
+    // Spikes first (under the round bloom).
+    const rays = 7;
+    for (let i = 0; i < rays; i++) {
+      const a = (i / rays) * Math.PI * 2;
+      const len = base * 2.6;
+      const wob = base * 0.22;
+      const cosA = Math.cos(a);
+      const sinA = Math.sin(a);
+      const px = -sinA * wob;
+      const py = cosA * wob;
+      g.beginFill(color, 0.5)
+        .drawPolygon([cosA * len, sinA * len, px, py, -px, -py])
+        .endFill();
+    }
+    g.beginFill(color, 0.28).drawCircle(0, 0, base * 1.7).endFill();
+    g.beginFill(color, 0.55).drawCircle(0, 0, base * 1.05).endFill();
+    g.beginFill(0xffffff, 0.95).drawCircle(0, 0, base * 0.55).endFill();
   }
 
   rebuildBeams() {
@@ -109,11 +145,21 @@ export class Laser {
     }
   }
 
-  // Called every frame: gentle flicker + keep beams reaching the object.
-  update(deltaMS, targetY) {
+  // Called every frame. `bottomY` is where the beam terminates (the scene puts
+  // it INSIDE the object so the object occludes the tip); `contactY` is the
+  // object's top surface, where the impact flare sits.
+  update(deltaMS, bottomY, contactY) {
     this.time += deltaMS;
-    this.targetY = targetY;
+    this.targetY = bottomY;
     const flicker = 0.85 + 0.15 * Math.sin(this.time * 0.02);
     if (this.beams) this.drawBeams(flicker);
+
+    // Park the flare on the contact point and make it shimmer: a fast pulse in
+    // size + alpha and a slow spin of the spikes.
+    this.impact.position.set(this.cx, contactY);
+    const pulse = 1 + 0.16 * Math.sin(this.time * 0.03);
+    this.flareG.scale.set(pulse * flicker);
+    this.flareG.alpha = 0.8 + 0.2 * Math.sin(this.time * 0.05);
+    this.flareG.rotation += deltaMS * 0.003;
   }
 }
