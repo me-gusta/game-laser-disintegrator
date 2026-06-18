@@ -27,30 +27,6 @@ body {
   padding: 12px;
 }
 
-#topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
-  margin-bottom: 12px;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-#topbar .title {
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-}
-#topbar .wallet {
-  font-size: 18px;
-  color: var(--muted);
-}
-#topbar .wallet b {
-  color: var(--gold);
-  font-size: 22px;
-}
-
 #layout {
   display: flex;
   gap: 12px;
@@ -102,6 +78,7 @@ body {
 }
 
 #lab {
+  position: relative;
   line-height: 0;
   border-radius: 12px;
   overflow: hidden;
@@ -111,6 +88,35 @@ body {
 }
 #lab canvas {
   display: block;
+}
+
+/* Coin wallet overlaid on the canvas "floor" strip (bottom 48px). */
+#lab .wallet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 48px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0 16px;
+  line-height: 1;
+  font-size: 18px;
+  color: var(--muted);
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+#lab .wallet b {
+  color: var(--gold);
+  font-size: 24px;
+}
+#lab .wallet .coin-icon {
+  height: 26px;
+  width: auto;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.8));
 }
 
 #upgrades {

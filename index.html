@@ -8,12 +8,12 @@
   </head>
   <body>
     <div id="game">
-      <header id="topbar">
-        <span class="title">⚡ Laser Disintegrator</span>
-        <span class="wallet"><b id="coins">0</b> coins</span>
-      </header>
       <div id="layout">
         <div id="lab-col">
+          <div id="lab">
+            <span class="wallet"><b id="coins">0</b><img class="coin-icon" src="/images/coin.png" alt="coins" /></span>
+            <!-- pixi canvas mounts here -->
+          </div>
           <div id="durability">
             <div class="dur-head">
               <span class="dur-label">Durability</span>
@@ -21,7 +21,6 @@
             </div>
             <div class="dur-bar"><div id="dur-fill"></div></div>
           </div>
-          <div id="lab"><!-- pixi canvas mounts here --></div>
         </div>
         <aside id="upgrades">
           <nav id="tabs">
