@@ -170,6 +170,24 @@ export function devNextObjectTier() {
   return state.objectTier;
 }
 
+// Restore every gameplay field to its fresh-start value in place (keeping the
+// same `state` object identity so the scene/UI references and subscribers stay
+// live), then notify. Clearing the save is the caller's job (see dev.reset).
+export function resetState() {
+  state.coins = 10;
+  state.laserTier = 0;
+  state.laserThickness = 1;
+  state.laserPower = 1;
+  state.laserBeams = 1;
+  state.clickLevel = 0;
+  state.shardLevel = 0;
+  state.vacuumTier = 0;
+  state.objectTier = 0;
+  state.objects = [1, 0, 0, 0, 0];
+  spawnCursor = -1;
+  notify();
+}
+
 // Cursor for the deterministic spawn cycle.
 let spawnCursor = -1;
 

@@ -41,6 +41,16 @@ export function saveGame() {
   }
 }
 
+// Drop the persisted save entirely (used by dev.reset). The periodic autosave
+// will write a fresh one from the reset state on its next tick.
+export function clearSave() {
+  try {
+    localStorage.removeItem(KEY);
+  } catch {
+    // Best-effort, same as saveGame.
+  }
+}
+
 // Restore the saved state into `state` in place. Returns { savedAt } (ms epoch)
 // for the loaded save, or null when there is nothing valid to restore.
 export function loadGame() {

@@ -9,10 +9,10 @@ import { Container } from '@pixi/display';
 import { Ticker } from '@pixi/ticker';
 import { Scene } from './lab/scene.js';
 import { initUI, showOfflineReward } from './ui.js';
-import { state, addCoins, devNextLaserTier, devNextObjectTier } from './state.js';
+import { state, addCoins, devNextLaserTier, devNextObjectTier, resetState } from './state.js';
 import { fmt } from './format.js';
 import { passiveCoinsPerSecond, offlineCoins } from './progression.js';
-import { loadGame, saveGame, installAutosave } from './persistence.js';
+import { loadGame, saveGame, clearSave, installAutosave } from './persistence.js';
 
 // Restore any saved game BEFORE the scene/UI read state, so they build from the
 // player's real progress. `loaded.savedAt` tells us how long they were away.
@@ -37,7 +37,7 @@ const renderer = new Renderer({
 document.getElementById('lab').appendChild(renderer.view);
 
 const stage = new Container();
-const scene = new Scene(LAB_W, LAB_H);
+const scene = new Scene(LAB_W, LAB_H, renderer);
 stage.addChild(scene.container);
 
 // Click anywhere on the lab -> click damage.
@@ -84,4 +84,9 @@ window.dev = {
   addCoins: (x) => addCoins(Number(x) || 0),
   nextLaserTier: () => devNextLaserTier(),
   nextObjectsTier: () => devNextObjectTier(),
+  // Wipe the save and reset all progress back to a fresh start.
+  reset: () => {
+    clearSave();
+    resetState();
+  },
 };

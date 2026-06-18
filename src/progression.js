@@ -157,7 +157,8 @@ export function laserVisual(tier, power, thickness, beams) {
     width: b.small ? coreWidth * 0.5 : coreWidth,
     intensity: b.small ? brightness * 0.5 : brightness,
   }));
-  return { color, glow: 1.0 + power * 0.8, beams: beamList };
+  // `tier` lets the renderer pick the matching emitter (gun) sprite.
+  return { tier, color, glow: 1.0 + power * 0.8, beams: beamList };
 }
 
 // Per-stat upgrade costs (grow with the stat level and the colour tier).
@@ -201,7 +202,8 @@ export function vacuumCleaners(tier) {
   const out = [];
   for (let c = 0; c < count; c++) {
     const localLevel = Math.min(tier - c * VACUUM_LEVELS_PER_CLEANER, VACUUM_LEVELS_PER_CLEANER - 1);
-    out.push({ interval: vacuumInterval(localLevel), color: VACUUM_CLEANER_COLORS[c] });
+    // `level` (0..9) drives how large the cleaner's sprite is drawn.
+    out.push({ interval: vacuumInterval(localLevel), color: VACUUM_CLEANER_COLORS[c], level: localLevel });
   }
   return out;
 }

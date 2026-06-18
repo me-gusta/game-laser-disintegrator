@@ -5,7 +5,13 @@
 // own x-offset, width and intensity - small beams are simply narrower/dimmer).
 import { Container } from '@pixi/display';
 import { Graphics } from '@pixi/graphics';
+import { Sprite } from '@pixi/sprite';
+import { Texture } from '@pixi/core';
 import { GlowFilter } from '@pixi/filter-glow';
+import { LASER_TEX, whenReady } from './assets.js';
+
+const EMITTER_H = 110; // displayed height of the emitter (gun) sprite, in px
+const MUZZLE_Y = 100; //  y where the beams emerge (just below the gun's barrel)
 
 export class Laser {
   constructor(dims) {
@@ -13,8 +19,11 @@ export class Laser {
     this.cx = dims.center.x;
     this.container = new Container();
 
-    // Emitter housing at the very top, centered.
-    this.emitter = new Graphics();
+    // Emitter (gun) sprite at the very top, centered, pointing down. Swapped to
+    // the matching art whenever the laser colour tier changes.
+    this.emitter = new Sprite(Texture.EMPTY);
+    this.emitter.anchor.set(0.5, 0.5);
+    this.emitter.position.set(this.cx, EMITTER_H / 2 + 2);
     this.container.addChild(this.emitter);
 
     // Beams live in their own container (anchored at the lab's center x) so we
@@ -25,31 +34,35 @@ export class Laser {
     this.beamLayer.filters = [this.glow];
     this.container.addChild(this.beamLayer);
 
+    // Glowing muzzle lenses (one per beam) drawn on top of the gun, recoloured
+    // to the tier each rebuild.
+    this.lens = new Graphics();
+    this.container.addChild(this.lens);
+
     this.time = 0;
     this.visual = null;
     this.targetY = dims.center.y; // updated by the scene to the object's top
   }
 
-  // Rebuild the static parts (emitter + beam graphics) for a new laser config.
+  // Rebuild the static parts (emitter sprite, lenses, beam graphics) for a new
+  // laser config.
   setVisual(visual) {
     this.visual = visual;
     this.glow.color = visual.color;
     this.glow.outerStrength = visual.glow;
 
-    // Each beam gets its own gray emitter block, sized to that beam (small
-    // beams -> smaller blocks). Blocks grow with thickness as the beams widen.
-    this.emitter.clear();
+    // Swap to this tier's gun sprite and scale it to a fixed display height.
+    const tex = LASER_TEX[visual.tier] || LASER_TEX[0];
+    this.emitter.texture = tex;
+    whenReady(tex, (w, h) => this.emitter.scale.set(EMITTER_H / h));
+
+    // A glowing lens at each beam's mouth, sized to that beam.
+    this.lens.clear();
     for (const b of visual.beams) {
-      const bx = this.cx + b.dx;
-      const bw = b.width * 2 + 8;
-      const bh = 18;
-      this.emitter
-        .beginFill(0x3a3f52)
-        .lineStyle(2, visual.color, 0.85)
-        .drawRoundedRect(bx - bw / 2, 8, bw, bh, 5)
+      this.lens
+        .beginFill(visual.color, 0.95)
+        .drawCircle(this.cx + b.dx, MUZZLE_Y, Math.max(2.5, b.width * 0.4))
         .endFill();
-      // Glowing emitter lens at the mouth of the block.
-      this.emitter.beginFill(visual.color, 0.95).drawCircle(bx, 8 + bh - 3, Math.max(2.5, b.width * 0.32)).endFill();
     }
 
     this.rebuildBeams();
@@ -67,7 +80,7 @@ export class Laser {
   }
 
   drawBeams(flicker) {
-    const top = 28;
+    const top = MUZZLE_Y;
     const bottom = this.targetY;
     const color = this.visual.color;
     // Beams whose emitter sits outside this half-width angle inward so they

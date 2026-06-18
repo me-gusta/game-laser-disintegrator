@@ -3,8 +3,10 @@
 // system, and owns the damage -> destruction -> shatter -> respawn loop.
 import { Container } from '@pixi/display';
 import { Graphics } from '@pixi/graphics';
+import { Sprite } from '@pixi/sprite';
 import * as P from '../progression.js';
-import { state, addCoins, pickSpawn, SHAPES, TIERS } from '../state.js';
+import { state, addCoins, pickSpawn, TIERS } from '../state.js';
+import { BACKGROUND, whenReady } from './assets.js';
 import { Laser } from './laser.js';
 import { Target } from './target.js';
 import { Shards } from './shards.js';
@@ -13,7 +15,8 @@ import { Floaters } from './floaters.js';
 const SNAP_THRESHOLDS = [0.72, 0.46, 0.22]; // 3 destruction tiers
 
 export class Scene {
-  constructor(width, height) {
+  constructor(width, height, renderer) {
+    this.renderer = renderer;
     this.dims = {
       width,
       height,
@@ -22,14 +25,32 @@ export class Scene {
     };
     this.container = new Container();
 
-    // Lab background + frame.
+    // Lab background: a solid dark fill as an instant fallback, with the photo
+    // backdrop sprite "cover"-fitted over it (fills the width, crops the excess
+    // height) once its texture loads.
     const bg = new Graphics();
     bg.beginFill(0x0d0f17).drawRect(0, 0, width, height).endFill();
     this.container.addChild(bg);
-    this.drawFrame(bg);
+
+    const bgSprite = new Sprite(BACKGROUND);
+    bgSprite.anchor.set(0.5);
+    bgSprite.position.set(width / 2, height / 2);
+    whenReady(BACKGROUND, (w, h) => {
+      const s = Math.max(width / w, height / h);
+      bgSprite.scale.set(s);
+    });
+    this.container.addChild(bgSprite);
+
+    // Ground strip the vacuum cleaners ride along (and shards pile on), drawn
+    // over the backdrop but beneath the gameplay layers added below.
+    const { groundY } = this.dims;
+    const ground = new Graphics();
+    ground.beginFill(0x161a26).drawRect(0, groundY, width, height - groundY).endFill();
+    ground.lineStyle(2, 0x2b3142, 1).moveTo(0, groundY).lineTo(width, groundY);
+    this.container.addChild(ground);
 
     this.laser = new Laser(this.dims);
-    this.target = new Target(this.dims);
+    this.target = new Target(this.dims, renderer);
     this.shards = new Shards(this.dims, (worth) => addCoins(worth));
     this.floaters = new Floaters();
 
@@ -49,15 +70,6 @@ export class Scene {
     this.spawnNext();
   }
 
-  drawFrame(g) {
-    const { width, height, groundY } = this.dims;
-    // Ground strip.
-    g.beginFill(0x161a26).drawRect(0, groundY, width, height - groundY).endFill();
-    g.lineStyle(2, 0x2b3142, 1).moveTo(0, groundY).lineTo(width, groundY);
-    // Outer frame.
-    g.lineStyle(3, 0x2b3142, 1).drawRect(1.5, 1.5, width - 3, height - 3);
-  }
-
   currentWorth() {
     return P.shardValue(state.shardLevel) * P.objectReward(this.cur.tier, this.cur.idx, this.cur.level);
   }
@@ -75,7 +87,7 @@ export class Scene {
     this.snapShards = Math.max(2, Math.round(total * 0.18));
     this.shatterShards = Math.max(3, total - this.snapShards * 3);
 
-    this.target.spawn(SHAPES[o.idx], TIERS[o.tier].color);
+    this.target.spawn(o.tier, o.idx, TIERS[o.tier].color);
     this.target.container.visible = true;
     this.target.container.alpha = 1;
     this.alive = true;

@@ -6,10 +6,14 @@
 // collected shard pays out coins.
 import { Container } from '@pixi/display';
 import { Graphics } from '@pixi/graphics';
+import { Sprite } from '@pixi/sprite';
+import { VACUUM_TEX, whenReady } from './assets.js';
 
 const GRAVITY = 0.0011; // px / ms^2
 const RESTITUTION = 0.5; // wall bounciness
 const COL_W = 12; // width of a stacking column (px)
+const VAC_H_MIN = 46; // displayed cleaner height at local level 0
+const VAC_H_MAX = 86; // displayed cleaner height at local level 9
 
 export class Shards {
   // onCollect(worth) is called once per shard the vacuum picks up.
@@ -37,32 +41,53 @@ export class Shards {
     this.vacuums = []; // { g, color, interval, suckTimer, targetCol }
   }
 
-  // Build a vacuum body Graphics in the given colour (dark body, coloured trim).
-  _makeVacuum(color) {
-    const g = new Graphics();
-    g.beginFill(0x3a3f52).lineStyle(2, color, 0.9).drawRoundedRect(-26, -22, 52, 22, 4).endFill();
-    g.beginFill(color, 0.25).drawPolygon([26, -20, 44, -8, 26, -2]).endFill(); // nozzle
+  // Build a vacuum-cleaner sprite for cleaner index `i` (its own artwork). The
+  // art faces left; it rests on the ground (anchored bottom-centre).
+  _makeVacuum(i) {
+    const g = new Sprite(VACUUM_TEX[i] || VACUUM_TEX[0]);
+    g.anchor.set(0.5, 1);
     g.y = this.dims.groundY;
     g.visible = false;
     this.container.addChild(g);
     return g;
   }
 
+  // Size a cleaner's sprite from its local level (0..9): small at first, growing
+  // toward VAC_H_MAX as it is upgraded. `scaleMag` is kept so the facing flip
+  // (negative scale.x) can be applied without losing the magnitude.
+  _scaleVacuum(v) {
+    const tex = v.g.texture;
+    if (!tex.height) return;
+    const t = Math.min(Math.max(v.level, 0), 9) / 9;
+    const h = VAC_H_MIN + (VAC_H_MAX - VAC_H_MIN) * t;
+    v.scaleMag = h / tex.height;
+    v.g.scale.set(v.g.scale.x < 0 ? -v.scaleMag : v.scaleMag, v.scaleMag);
+  }
+
   // Sync the active cleaners to `configs` (one entry per cleaner, in order):
-  // each has { interval, color }. Spawns new cleaners as the count grows and
-  // updates collection intervals in place.
+  // each has { interval, color, level }. Spawns new cleaners as the count grows
+  // and updates collection intervals + sprite sizes in place.
   setVacuums(configs) {
     while (this.vacuums.length < configs.length) {
       const i = this.vacuums.length;
-      const g = this._makeVacuum(configs[i].color);
+      const g = this._makeVacuum(i);
       g.x = -60 - 60 * i; // stagger entrances off-screen to the left
-      this.vacuums.push({ g, color: configs[i].color, interval: configs[i].interval, suckTimer: 0, targetCol: -1 });
+      const v = { g, color: configs[i].color, interval: configs[i].interval, level: configs[i].level || 0, scaleMag: 1, suckTimer: 0, targetCol: -1 };
+      this.vacuums.push(v);
+      // Size now if the texture is ready, otherwise once it loads.
+      whenReady(g.texture, () => this._scaleVacuum(v));
     }
     while (this.vacuums.length > configs.length) {
       const v = this.vacuums.pop();
       this.container.removeChild(v.g);
     }
-    for (let i = 0; i < this.vacuums.length; i++) this.vacuums[i].interval = configs[i].interval;
+    for (let i = 0; i < this.vacuums.length; i++) {
+      const v = this.vacuums[i];
+      const levelChanged = v.level !== configs[i].level;
+      v.interval = configs[i].interval;
+      v.level = configs[i].level || 0;
+      if (levelChanged) this._scaleVacuum(v);
+    }
   }
 
   // Erupt `count` shards from (x,y). `worth` is the *base* coin value; each
@@ -241,6 +266,11 @@ export class Shards {
     const dx = targetX - v.g.x;
     const speed = 0.5;
     v.g.x += Math.max(-speed * deltaMS, Math.min(speed * deltaMS, dx));
+    // Face the way we travel (art faces left by default; flip to face right).
+    if (v.scaleMag) {
+      if (dx > 1) v.g.scale.x = -v.scaleMag;
+      else if (dx < -1) v.g.scale.x = v.scaleMag;
+    }
 
     v.suckTimer += deltaMS;
     if (Math.abs(dx) < COL_W && v.suckTimer >= v.interval) {

@@ -1,129 +1,140 @@
 // lab/target.js
-// The object being disintegrated. It is a simple geometric shape that hovers
-// above the ground. As durability drops we punch growing circular "holes" into
-// it (painted in the lab background colour) to show it being eaten away. Holes
-// accumulate CONTINUOUSLY as durability falls, plus three bigger "snap" craters
-// at the 72/46/22% thresholds (each with a shard burst).
+// The object being disintegrated — a themed image sprite (egypt artefacts, etc.)
+// that hovers above the ground. As durability drops the laser eats it away by
+// biting circular HOLES out of it, revealing the lab background behind.
+//
+// Implementation: each object owns a RenderTexture. On spawn we draw the object
+// texture into it once; thereafter every crater is a single soft white brush
+// stamped into the RenderTexture with BLEND_MODES.ERASE (O(1) per crater — no
+// geometry rebuild, unlike a Graphics mask whose hole triangulation thrashed and
+// froze as the overlapping craters piled up). A single Sprite displays the RT.
 import { Container } from '@pixi/display';
-import { Graphics } from '@pixi/graphics';
-import { SHAPES } from '../state.js';
+import { Sprite } from '@pixi/sprite';
+import { Texture, RenderTexture } from '@pixi/core';
+import { BLEND_MODES } from '@pixi/constants';
+import { objectTexture, whenReady, BRUSH } from './assets.js';
 
-const R = 54; // base radius of the shape
-const LAB_BG = 0x0d0f17; // lab background; craters are painted in it to "eat" the shape
-const MAX_EROSION = 22; // fine holes punched by the time the object is destroyed
-
-// Vertices for a regular polygon with `n` sides, pointing up.
-function polygon(n) {
-  const pts = [];
-  for (let i = 0; i < n; i++) {
-    const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
-    pts.push(Math.cos(a) * R, Math.sin(a) * R);
-  }
-  return pts;
-}
-
-function drawShape(g, shape, color) {
-  g.beginFill(color, 0.95).lineStyle(3, 0xffffff, 0.35);
-  switch (shape) {
-    case 'circle':
-      g.drawCircle(0, 0, R);
-      break;
-    case 'rectangle':
-      g.drawRoundedRect(-R, -R * 0.78, R * 2, R * 1.56, 8);
-      break;
-    case 'triangle':
-      g.drawPolygon(polygon(3));
-      break;
-    case 'pentagon':
-      g.drawPolygon(polygon(5));
-      break;
-    case 'hexagon':
-      g.drawPolygon(polygon(6));
-      break;
-  }
-  g.endFill();
-}
+const DISPLAY_H = 175; //  displayed object height in px
+const RT_MAX_H = 360; //   cap the RenderTexture height (crisp enough; bounds VRAM)
+const MAX_EROSION = 22; //  fine holes punched by the time the object is destroyed
 
 export class Target {
-  constructor(dims) {
+  constructor(dims, renderer) {
     this.dims = dims;
-    this.R = R;
+    this.renderer = renderer;
     this.container = new Container();
     this.container.x = dims.center.x;
     this.baseY = dims.center.y;
 
-    this.shapeG = new Graphics();
-    this.damageG = new Graphics(); // craters painted over the shape in the bg color
-    this.container.addChild(this.shapeG, this.damageG);
+    // Shows the (progressively eroded) RenderTexture.
+    this.sprite = new Sprite(Texture.EMPTY);
+    this.sprite.anchor.set(0.5);
+    this.container.addChild(this.sprite);
 
-    this.holes = []; //    big "snap" craters
-    this.erosion = []; //  many fine erosion craters (grow with damage)
+    // Off-stage helpers rendered straight into the RenderTexture (never added to
+    // the scene graph): the source object (drawn once per spawn) and the erase
+    // brush (stamped per crater).
+    this.srcSprite = new Sprite(Texture.EMPTY);
+    this.brush = new Sprite(BRUSH);
+    this.brush.anchor.set(0.5);
+    this.brush.blendMode = BLEND_MODES.ERASE;
+
+    this.rt = null; //        RenderTexture for the current object
+    this.rtW = 0;
+    this.rtH = 0;
+
     this.bob = 0;
     this.frac = 1; //         current durability fraction (1 = pristine)
-    this.lastDrawnFrac = 1; // throttles redraws to ~1.5% steps
-    this.shape = 'circle';
-    this.color = 0xffffff;
+    this.lastDrawnFrac = 1; // throttles erosion to ~1.5% steps
+    this.erosionCount = 0; // craters already stamped this object
+    this.ready = false; //    true once the RenderTexture is primed
+    this.halfW = DISPLAY_H / 2; // displayed half-width
+    this.halfH = DISPLAY_H / 2; // displayed half-height (for beam aiming)
+    this.radTex = DISPLAY_H / 2; // crater scale in RenderTexture pixels
+    this.dispScale = 1; //    RenderTexture px -> display px
+    this.color = 0xffffff; // tier colour used to tint the shard particles
   }
 
-  // Reset for a freshly spawned object.
-  spawn(shape, color) {
-    this.shape = shape;
+  // Reset for a freshly spawned object at colour `tier`, shape `idx`.
+  spawn(tier, idx, color) {
     this.color = color;
-    this.holes = [];
-    this.erosion = [];
     this.frac = 1;
     this.lastDrawnFrac = 1;
-    drawShape(this.shapeG.clear(), shape, color);
-    this.redrawDamage();
-    this.container.scale.set(1);
-    this.container.alpha = 1;
+    this.erosionCount = 0;
+    this.ready = false;
+    const tex = objectTexture(tier, idx);
+    this.sprite.visible = false;
+    // Prime the RenderTexture once the source size is known (sync for cached art).
+    whenReady(tex, (w, h) => this._prime(tex, w, h));
+  }
+
+  // (Re)size the RenderTexture and draw the pristine object into it.
+  _prime(tex, w, h) {
+    const rtScale = Math.min(1, RT_MAX_H / h);
+    this.rtW = Math.max(1, Math.round(w * rtScale));
+    this.rtH = Math.max(1, Math.round(h * rtScale));
+
+    if (!this.rt) this.rt = RenderTexture.create({ width: this.rtW, height: this.rtH });
+    else this.rt.resize(this.rtW, this.rtH);
+
+    // Draw the source object into the RT, clearing whatever was there before.
+    this.srcSprite.texture = tex;
+    this.srcSprite.anchor.set(0, 0);
+    this.srcSprite.position.set(0, 0);
+    this.srcSprite.scale.set(rtScale);
+    this.renderer.render(this.srcSprite, { renderTexture: this.rt, clear: true });
+
+    this.sprite.texture = this.rt;
+    this.dispScale = DISPLAY_H / this.rtH;
+    this.sprite.scale.set(this.dispScale);
+    this.halfW = (this.rtW * this.dispScale) / 2;
+    this.halfH = (this.rtH * this.dispScale) / 2;
+    this.radTex = Math.min(this.rtW, this.rtH) / 2;
+
+    this.ready = true;
+    this.sprite.visible = true;
+  }
+
+  // Stamp one erase-brush crater (centre + radius in RenderTexture pixels) into
+  // the RT — a single draw call, accumulating on top of prior craters.
+  _erase(cx, cy, r) {
+    const b = this.brush;
+    b.position.set(cx, cy);
+    b.scale.set((r * 2) / b.texture.width);
+    this.renderer.render(b, { renderTexture: this.rt, clear: false });
   }
 
   // Continuous erosion driven by durability fraction (1 -> 0), called each frame
-  // by the scene. Throttled so we only repaint every ~1.5% of progress. As damage
-  // grows we punch more small holes into the shape.
+  // by the scene. Throttled to ~1.5% steps; only the NEW craters since last time
+  // are stamped (never a full rebuild).
   setDamage(frac) {
     this.frac = Math.max(0, Math.min(1, frac));
+    if (!this.ready) return;
     if (Math.abs(this.frac - this.lastDrawnFrac) < 0.015) return;
     this.lastDrawnFrac = this.frac;
     const dmg = 1 - this.frac;
     const target = Math.floor(dmg * MAX_EROSION);
-    while (this.erosion.length < target) {
+    while (this.erosionCount < target) {
       const angle = (Math.random() - 0.5) * Math.PI * 2;
-      const dist = R * (0.25 + Math.random() * 0.6);
-      this.erosion.push({
-        x: Math.cos(angle) * dist,
-        y: Math.sin(angle) * dist,
-        r: R * (0.12 + Math.random() * 0.14),
-      });
-    }
-    this.redrawDamage();
-  }
-
-  // Paint each crater in the background color so the shape looks eaten away.
-  redrawDamage() {
-    const g = this.damageG;
-    g.clear();
-    for (const h of this.erosion) {
-      g.beginFill(LAB_BG, 1).drawCircle(h.x, h.y, h.r).endFill();
-    }
-    for (const h of this.holes) {
-      g.beginFill(LAB_BG, 1).drawCircle(h.x, h.y, h.r).endFill();
+      const dist = this.radTex * (0.25 + Math.random() * 0.6);
+      const r = this.radTex * (0.12 + Math.random() * 0.14);
+      this._erase(this.rtW / 2 + Math.cos(angle) * dist, this.rtH / 2 + Math.sin(angle) * dist, r);
+      this.erosionCount++;
     }
   }
 
-  // Punch a new (bigger) destruction crater. `tier` is 1..3 (controls size).
-  // Returns the world-space point where shards should erupt from.
+  // Punch a bigger destruction crater (`tier` 1..3 controls size). Returns the
+  // world-space point where shards should erupt from.
   addDestruction(tier) {
-    // Random point biased to the rim so the bite reads from a side.
+    if (!this.ready) return { x: this.container.x, y: this.container.y };
     const angle = (Math.random() - 0.5) * Math.PI * 2;
-    const dist = R * (0.4 + Math.random() * 0.5);
-    const x = Math.cos(angle) * dist;
-    const y = Math.sin(angle) * dist;
-    const r = R * (0.32 + tier * 0.13);
-    this.holes.push({ x, y, r });
-    this.redrawDamage();
-    return { x: this.container.x + x, y: this.container.y + y };
+    const dist = this.radTex * (0.4 + Math.random() * 0.5);
+    const r = this.radTex * (0.32 + tier * 0.13);
+    this._erase(this.rtW / 2 + Math.cos(angle) * dist, this.rtH / 2 + Math.sin(angle) * dist, r);
+    return {
+      x: this.container.x + Math.cos(angle) * dist * this.dispScale,
+      y: this.container.y + Math.sin(angle) * dist * this.dispScale,
+    };
   }
 
   update(deltaMS) {
@@ -133,11 +144,6 @@ export class Target {
   }
 
   topY() {
-    return this.container.y - R;
-  }
-
-  // Index of this shape (for progression lookups elsewhere if needed).
-  static shapeIndex(name) {
-    return SHAPES.indexOf(name);
+    return this.container.y - this.halfH;
   }
 }
