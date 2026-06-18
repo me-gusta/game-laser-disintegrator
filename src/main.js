@@ -60,14 +60,39 @@ if (loaded && loaded.savedAt) {
 saveGame(); // stamp current time as the new baseline
 installAutosave();
 
-// Durability readout above the canvas.
+// Durability readout above the canvas. The bar runs green (full) -> yellow ->
+// orange -> red (nearly destroyed), interpolated continuously from the fraction.
 const durText = document.getElementById('dur-text');
 const durFill = document.getElementById('dur-fill');
+
+// Colour stops keyed by remaining-durability fraction, low -> high.
+const DUR_STOPS = [
+  [0.0, [0xff, 0x3b, 0x30]], //  red
+  [0.34, [0xff, 0x8c, 0x00]], // orange
+  [0.67, [0xff, 0xd0, 0x00]], // yellow
+  [1.0, [0x3c, 0xd0, 0x5a]], //  green
+];
+function durColor(frac) {
+  frac = Math.max(0, Math.min(1, frac));
+  for (let i = 1; i < DUR_STOPS.length; i++) {
+    const [f1, c1] = DUR_STOPS[i];
+    if (frac <= f1) {
+      const [f0, c0] = DUR_STOPS[i - 1];
+      const t = (frac - f0) / (f1 - f0);
+      const ch = (k) => Math.round(c0[k] + (c1[k] - c0[k]) * t);
+      return `rgb(${ch(0)}, ${ch(1)}, ${ch(2)})`;
+    }
+  }
+  return 'rgb(60, 208, 90)';
+}
+
 function updateDurability() {
   const dur = Math.max(0, scene.dur);
   const max = scene.maxDur || 1;
+  const frac = dur / max;
   durText.textContent = `${fmt(dur)} / ${fmt(max)}`;
-  durFill.style.width = `${Math.max(0, Math.min(100, (dur / max) * 100))}%`;
+  durFill.style.width = `${Math.max(0, Math.min(100, frac * 100))}%`;
+  durFill.style.background = durColor(frac);
 }
 
 const ticker = new Ticker();

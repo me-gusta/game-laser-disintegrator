@@ -71,7 +71,6 @@ export class Scene {
     this.alive = false;
     this.respawnTimer = 0;
     this._laserAccum = 0; // laser damage accumulated between floating-number pops
-    this._laserTimer = 0;
     this.spawnNext();
   }
 
@@ -99,11 +98,16 @@ export class Scene {
   }
 
   // A screen click -> burst of click damage with an immediate floating number.
+  // The number erupts from the hole the bite just opened (near its rim), falling
+  // back to the object's top while the object is still pristine and hole-less.
   click() {
     if (!this.alive) return;
     const d = P.clickDamage(state.clickLevel);
-    this.floaters.pop(d, this.target.container.x, this.target.container.y - 10);
     this.damage(d);
+    const c = P.LASER_TIER_COLORS[state.laserTier];
+    const h = this.target.lastHole;
+    if (h) this.floaters.pop(d, h.x, h.y, c);
+    else this.floaters.pop(d, this.target.container.x, this.target.container.y - 10, c);
   }
 
   damage(amount) {
@@ -152,19 +156,22 @@ export class Scene {
     this.laser.update(dt, surface + (deep - surface) * frac, surface, this.alive);
 
     if (this.alive) {
-      // Laser deals damage every frame; accumulate it and emit one floating
-      // number every ~0.35s so the screen isn't flooded with tiny ticks.
+      // Laser deals damage every frame; accumulate it and emit the running total
+      // as a floating number the moment a fresh erosion hole appears — so digits
+      // erupt from the holes themselves rather than the object's centre.
       const ld =
         P.laserDps(state.laserTier, state.laserPower, state.laserThickness, state.laserBeams) * (dt / 1000);
       this._laserAccum += ld;
-      this._laserTimer += dt;
       this.damage(ld);
-      // Drive the continuous on-screen erosion from the live durability fraction.
-      if (this.alive) this.target.setDamage(this.dur / this.maxDur);
-      if (this._laserTimer >= 350 && this._laserAccum > 0 && this.alive) {
-        this.floaters.pop(this._laserAccum, this.target.container.x, this.target.container.y - 10);
-        this._laserAccum = 0;
-        this._laserTimer = 0;
+      // Drive the continuous on-screen erosion from the live durability fraction;
+      // setDamage returns the world-space centres of any holes punched this frame.
+      if (this.alive) {
+        const holes = this.target.setDamage(this.dur / this.maxDur);
+        if (holes.length && this._laserAccum > 0) {
+          const h = holes[holes.length - 1]; // the freshest hole
+          this.floaters.pop(this._laserAccum, h.x, h.y, P.LASER_TIER_COLORS[state.laserTier]);
+          this._laserAccum = 0;
+        }
       }
     } else {
       // After a shatter, wait briefly then spawn a fresh random object.

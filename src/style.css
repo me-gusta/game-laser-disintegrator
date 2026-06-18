@@ -73,8 +73,10 @@ body {
   height: 100%;
   width: 100%;
   border-radius: 7px;
-  background: linear-gradient(90deg, #ff5e5e, #ffd45e);
-  transition: width 0.08s linear;
+  /* Colour is set per-frame from the durability fraction (green->red); this is
+     just the full-bar default before the first update paints. */
+  background: rgb(60, 208, 90);
+  transition: width 0.08s linear, background-color 0.12s linear;
 }
 
 #lab {
@@ -120,12 +122,6 @@ body {
   font-size: 26px;
   font-weight: 800;
   line-height: 1;
-}
-#wallet-card .coin-label {
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--muted);
 }
 
 #upgrades {

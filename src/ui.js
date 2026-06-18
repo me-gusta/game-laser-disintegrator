@@ -3,7 +3,7 @@
 // labels/costs and calls the buy actions on state; state.onChange re-renders.
 import $ from 'jquery';
 import * as P from './progression.js';
-import { fmt, fmtDuration } from './format.js';
+import { fmt, fmtCoins, fmtDuration } from './format.js';
 import { objectImageUrl, objectSetName, objectItemName } from './lab/assets.js';
 import {
   state,
@@ -24,9 +24,6 @@ import {
   TIERS,
 } from './state.js';
 
-// Player-facing description of each beam level (replaces the internal X/x layout
-// notation): index 0..4 == beam level 1..5.
-const BEAM_DESC = ['1 beam', '3 beams (2 narrow)', '3 beams', '5 beams (2 narrow)', '5 beams'];
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
 
 const staticControls = []; // refresh() callbacks for the fixed laser/shards rows
@@ -70,13 +67,13 @@ function nextTierButton(panel, build, controls) {
 }
 
 // ----------------------------- Laser tab -----------------------------------
-function laserStatRow(panel, { label, key, cost, buy, value }) {
+function laserStatRow(panel, { label, key, cost, buy, help }) {
   upgradeRow(panel, {
     buy,
     refresh(els) {
       const lvl = state[key];
       els.name.text(`${label} · Lv ${lvl}/${P.MAX_LEVEL}`);
-      els.sub.html(value(lvl));
+      els.sub.text(help);
       if (lvl >= P.MAX_LEVEL) {
         els.btn.html('Maxed').prop('disabled', true);
       } else {
@@ -120,25 +117,21 @@ function buildLaser() {
     key: 'laserThickness',
     cost: P.laserThicknessCost,
     buy: buyLaserThickness,
-    value: (lvl) => {
-      const w = P.BASE.laserBaseWidth + lvl * P.BASE.laserWidthPerLevel;
-      return `<span class="val">${w.toFixed(0)}px</span> wide`;
-    },
+    help: 'Increase width',
   });
   laserStatRow(panel, {
     label: 'Power',
     key: 'laserPower',
     cost: P.laserPowerCost,
     buy: buyLaserPower,
-    value: () => `<span class="val">+more damage</span> · brighter beam`,
+    help: 'Increase damage',
   });
   laserStatRow(panel, {
     label: 'Beams',
     key: 'laserBeams',
     cost: P.laserBeamsCost,
     buy: buyLaserBeams,
-    value: (lvl) =>
-      `<span class="val">${BEAM_DESC[lvl - 1]}</span> · ${P.beamSum(lvl)}× beam power`,
+    help: 'Add more lasers',
   });
 
   nextTierButton(
@@ -214,13 +207,17 @@ function rebuildObjects() {
 
   SHAPES.forEach((shape, idx) => {
     // One row per object: its real art (a black silhouette while locked), the
-    // item name + level/durability, and the unlock/upgrade button. Once an item
-    // is maxed the button is replaced by a blue (theme) checkmark.
+    // item name + level/durability, and the unlock/upgrade button. While locked
+    // (not yet bought) the item is a mystery: its name reads "Unknown" and the
+    // art is a black silhouette. Once an item is maxed the button is replaced by
+    // a blue (theme) checkmark.
+    const locked = state.objects[idx] === 0;
+    const displayName = locked ? 'Unknown' : objectItemName(t, idx);
     const $row = $(`
       <div class="obj-row">
-        <img class="obj-img" src="${objectImageUrl(t, idx)}" alt="${objectItemName(t, idx)}" />
+        <img class="obj-img" src="${objectImageUrl(t, idx)}" alt="${displayName}" />
         <div class="info">
-          <div class="name">${objectItemName(t, idx)}</div>
+          <div class="name">${displayName}</div>
           <div class="lvl"></div>
         </div>
         <button class="buy"></button>
@@ -247,7 +244,7 @@ function rebuildObjects() {
         // Gated: the previous item isn't maxed yet. Say so, instead of showing a
         // buyable-looking Unlock+cost the player can't actually use.
         $lvl.text('Locked');
-        $btn.html('🔒 Max out the<br>previous item').prop('disabled', true);
+        $btn.html('Max out the<br>previous item').prop('disabled', true);
       } else if (lvl === 0) {
         const cost = P.objectUnlockCost(t, idx);
         $lvl.text('Locked');
@@ -277,7 +274,7 @@ function rebuildObjects() {
 
 // ----------------------------- wiring --------------------------------------
 function refresh() {
-  $('#coins').text(fmt(state.coins));
+  $('#coins').text(fmtCoins(state.coins));
   const sig = objectsSignature();
   if (sig !== objSig) {
     objSig = sig;

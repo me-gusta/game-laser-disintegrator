@@ -56,6 +56,16 @@ export class Target {
     this.dispScale = 1; //    RenderTexture px -> display px
     this.color = 0xffffff; // tier colour used to tint the shard particles
     this.level = 1; //        object level -> bigger on-screen as it is upgraded
+    this.lastHole = null; //  world-space centre of the most recently punched hole
+  }
+
+  // Convert a RenderTexture-space point (origin top-left) into a world-space
+  // point on the displayed sprite — used so holes can spit out damage numbers.
+  _worldOf(cx, cy) {
+    return {
+      x: this.container.x + (cx - this.rtW / 2) * this.dispScale,
+      y: this.container.y + (cy - this.rtH / 2) * this.dispScale,
+    };
   }
 
   // Reset for a freshly spawned object at colour `tier`, shape `idx`, `level`.
@@ -65,6 +75,7 @@ export class Target {
     this.frac = 1;
     this.lastDrawnFrac = 1;
     this.erosionCount = 0;
+    this.lastHole = null;
     this.ready = false;
     const tex = objectTexture(tier, idx);
     this.sprite.visible = false;
@@ -123,21 +134,29 @@ export class Target {
 
   // Continuous erosion driven by durability fraction (1 -> 0), called each frame
   // by the scene. Throttled to ~1.5% steps; only the NEW craters since last time
-  // are stamped (never a full rebuild).
+  // are stamped (never a full rebuild). Returns the world-space centres of the
+  // holes punched THIS call (empty when nothing changed) so the scene can erupt
+  // a damage number from each fresh hole.
   setDamage(frac) {
     this.frac = Math.max(0, Math.min(1, frac));
-    if (!this.ready) return;
-    if (Math.abs(this.frac - this.lastDrawnFrac) < 0.015) return;
+    if (!this.ready) return [];
+    if (Math.abs(this.frac - this.lastDrawnFrac) < 0.015) return [];
     this.lastDrawnFrac = this.frac;
     const dmg = 1 - this.frac;
     const target = Math.floor(dmg * MAX_EROSION);
+    const holes = [];
     while (this.erosionCount < target) {
       const angle = (Math.random() - 0.5) * Math.PI * 2;
       const dist = this.radTex * (0.25 + Math.random() * 0.6);
       const r = this.radTex * (0.12 + Math.random() * 0.14);
-      this._erase(this.rtW / 2 + Math.cos(angle) * dist, this.rtH / 2 + Math.sin(angle) * dist, r);
+      const cx = this.rtW / 2 + Math.cos(angle) * dist;
+      const cy = this.rtH / 2 + Math.sin(angle) * dist;
+      this._erase(cx, cy, r);
+      this.lastHole = this._worldOf(cx, cy);
+      holes.push(this.lastHole);
       this.erosionCount++;
     }
+    return holes;
   }
 
   // Punch a bigger destruction crater (`tier` 1..3 controls size). Returns the
@@ -147,11 +166,11 @@ export class Target {
     const angle = (Math.random() - 0.5) * Math.PI * 2;
     const dist = this.radTex * (0.4 + Math.random() * 0.5);
     const r = this.radTex * (0.32 + tier * 0.13);
-    this._erase(this.rtW / 2 + Math.cos(angle) * dist, this.rtH / 2 + Math.sin(angle) * dist, r);
-    return {
-      x: this.container.x + Math.cos(angle) * dist * this.dispScale,
-      y: this.container.y + Math.sin(angle) * dist * this.dispScale,
-    };
+    const cx = this.rtW / 2 + Math.cos(angle) * dist;
+    const cy = this.rtH / 2 + Math.sin(angle) * dist;
+    this._erase(cx, cy, r);
+    this.lastHole = this._worldOf(cx, cy);
+    return this.lastHole;
   }
 
   update(deltaMS) {
