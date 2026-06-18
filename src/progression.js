@@ -16,69 +16,93 @@
 // one). They cannot be separated while each tier still starts at a snappy kill.
 const TIER_MULT = 190;
 
+// Per-tier COST multiplier — deliberately LARGER than the income/power tier
+// multiplier (TIER_MULT). This is the key to "explosive leap but re-armed wall":
+// crossing a tier multiplies income by ~TIER_MULT, but the next tier's costs by
+// this larger factor, so each new tier's prices are higher *relative to your
+// entry income* and you must rebuild within the tier (active + idle) instead of
+// cascading straight through. Ratio COST_TIER_MULT/TIER_MULT ≈ the within-tier
+// income growth, so tier time stays roughly constant (gently rising). Tuned by
+// the pacing sim: K/R ≈ 8 (1500/190) re-arms the wall without exponential stall.
+const COST_TIER_MULT = 1500;
+
 export const BASE = {
   // --- Laser ---------------------------------------------------------------
-  // Passive DPS = base x tier^t x power^(p-1) x thickness^(k-1) x beamSum.
+  // Passive DPS = base x tier^t x power^(p-1) x thickness^(k-1) x beamFactor.
   // Each of thickness / power / beams has 5 levels; maxing all 3 unlocks the
   // next colour tier (which resets the three stats to level 1).
-  // Within-tier range R_laser = 1.32^4 * 1.12^4 * 5 ~= 23.9. This is INTENTIONALLY
-  // ~2x the object within-tier range (R_obj ~= 12): a fresh laser is weak (so
-  // early-game clicking is the fast path) but a fully-upgraded laser overtakes
-  // and shreds even maxed objects. Start TTK ~3s, maxed-vs-maxed TTK ~1.5s.
-  laserDps: 2, //            DPS with tier 0, all stats at level 1
+  //
+  // DESIGN ("flat grind, explosive leap"): the within-tier laser range is kept
+  // SMALL (R_laser ~= 3-4x) on purpose. A fresh tier-0 laser kills the starter
+  // object in ~9-10s, and a fully-upgraded tier laser still takes ~3s — so the
+  // disintegration on screen is ALWAYS the main event, never trivialised. The
+  // big power jump lives in the x190 tier crossing, not in within-tier upgrades.
+  laserDps: 4.5, //          DPS with tier 0, all stats at level 1 (=> ~10s start TTK)
   laserTierMult: TIER_MULT, // DPS multiplier per colour tier (= M)
-  laserPowerMult: 1.32, //   DPS multiplier per power level
-  laserThickMult: 1.12, //   DPS multiplier per thickness level
+  laserPowerMult: 1.11, //   DPS multiplier per power level (small: keep TTK watchable)
+  laserThickMult: 1.06, //   DPS multiplier per thickness level (small)
+  laserBeamMult: 0.2, //     DPS added per beam level beyond 1 (1.0..1.8x over 5
+  //                         levels): beams stay a big VISUAL payoff without a 5x
+  //                         DPS swing that would trivialise the kill.
   laserBaseWidth: 6, //      beam core width at thickness 1 ...
   laserWidthPerLevel: 3.4, //... + this per thickness level
-  laserThickCost: 20, //     thickness upgrade anchor cost
-  laserPowerCost: 28, //     power upgrade anchor cost
-  laserBeamsCost: 55, //     beams upgrade anchor cost
-  laserStatGrowth: 2.25, //  cost multiplier per stat level
-  laserTierCostMult: TIER_MULT, // stat-cost multiplier per tier (tracks income)
-  laserNextTierCost: 600, // cost of the first NEXT TIER button
-  laserNextTierGrowth: TIER_MULT, // x per tier (tracks income)
+  laserThickCost: 18, //     thickness upgrade anchor cost
+  laserPowerCost: 24, //     power upgrade anchor cost
+  laserBeamsCost: 42, //     beams upgrade anchor cost
+  laserStatGrowth: 2.0, //   cost multiplier per stat level (rises faster than the
+  //                         flat within-tier income, so each buy takes longer to
+  //                         afford -> deceleration -> lean on idle for next tier)
+  laserTierCostMult: COST_TIER_MULT, // stat-cost multiplier per tier (> income mult: re-arms the wall)
+  laserNextTierCost: 900, // first NEXT TIER button: a multi-minute idle-funded save
+  laserNextTierGrowth: COST_TIER_MULT, // x per tier (> income mult, so the leap is earned each time)
 
   // --- Click power (instant damage per screen click) ---
-  clickDmg: 2, //            damage of a click at level 0 (early-game driver)
-  clickDmgGrowth: 1.5,
-  clickCost: 8,
-  clickCostGrowth: 1.7,
+  // Kept SMALL vs object durability (~3% of a fresh object): clicking ASSISTS a
+  // kill, it never trivialises the ~9s TTK (clicks apply straight to dur).
+  clickDmg: 1.2, //          damage of a click at level 0
+  clickDmgGrowth: 1.4,
+  clickCost: 9,
+  clickCostGrowth: 1.8,
 
   // --- Shard value (base coins per collected shard) ---
+  // Gentle value growth vs steep cost growth -> a slow lever that self-limits
+  // (no uncapped 1.4^n runaway).
   shardValue: 1,
-  shardValueGrowth: 1.4,
+  shardValueGrowth: 1.18,
   shardCost: 12,
   shardCostGrowth: 1.7,
 
   // --- Vacuum (30 levels = 3 cleaners x 10; ms between collecting one shard) ---
   vacuumTiers: 30, //        total upgrade levels across all cleaners
-  vacuumInterval: 450, //    a cleaner at local level 0: ~2.2 shards/sec
+  vacuumInterval: 300, //    a cleaner at local level 0: ~3.3 shards/sec (headroom
+  //                         over the slow shard production at long TTK)
   vacuumIntervalMin: 45, //  a cleaner at local level 9: ~22 shards/sec
-  vacuumCost: 25,
+  vacuumCost: 24,
   vacuumCostGrowth: 1.7,
 
   // --- Objects (7 tiers x 5 shapes) ---
-  // Within-tier range R_obj = 1.53^4 * 1.22^4 ~= 12, deliberately ~half of
-  // R_laser so the laser ramps faster than objects within a tier (see laserDps).
-  objDurability: 6, //          base max durability (tier0 shape0 level1)
-  objDurabilityIndex: 1.53, //  x per shape index (circle..hexagon)
+  objDurability: 45, //         base max durability (tier0 shape0 level1) => ~10s TTK
+  objDurabilityIndex: 1.25, //  x per shape index (circle..hexagon): later shapes
+  //                            are tankier but not absurdly so (keeps TTK in band)
   objDurabilityTier: TIER_MULT, // x per tier (= M)
-  objDurabilityUpgrade: 1.22, // x per object level beyond 1
-  shardCountFirst: 15, //       shards from the very first object (circle, tier 0)
+  objDurabilityUpgrade: 1.15, // x per object level beyond 1 (gentle: TTK stays watchable)
+  shardCountFirst: 10, //       shards from the very first object (circle, tier 0)
   shardCountLast: 100, //       shards from the very last object (hexagon, last tier)
   shardCountSpread: 0.3, //     ± random fraction around the progressive base
   objRewardTier: TIER_MULT, //  coin-worth multiplier per tier (= M)
-  objRewardIndex: 1.6, //       coin-worth multiplier per shape index
-  objRewardUpgrade: 1.6, //     coin-worth multiplier per object level (income lever)
+  objRewardIndex: 1.0, //       coin-worth FLAT across shapes (later shapes already
+  //                            give more via higher shard COUNT, objectShardBase)
+  objRewardUpgrade: 1.06, //    coin-worth barely rises per object level — within-tier
+  //                            income stays nearly flat so the leap is the tier crossing
   objUnlockCost: 18, //         unlock cost anchor
-  objUpgradeCost: 10, //        upgrade cost anchor
-  objCostTier: TIER_MULT, //    cost multiplier per tier (tracks income)
+  objUpgradeCost: 11, //        upgrade cost anchor
+  objCostTier: COST_TIER_MULT, // cost multiplier per tier (> income mult: re-arms the wall)
   objCostShape: 1.7, //         cost multiplier per shape index
-  objUpgradeGrowth: 1.7, //     cost multiplier per object level
+  objUpgradeGrowth: 1.8, //     cost multiplier per object level (rises faster than
+  //                            the flat reward growth -> decelerating buys)
   objMaxLevel: 5, //            levels per object before it is "maxed"
-  objNextTierCost: 800, //      cost of the first objects NEXT TIER button
-  objNextTierGrowth: TIER_MULT, // x per tier (tracks income)
+  objNextTierCost: 1200, //     first objects NEXT TIER button: a multi-minute idle save
+  objNextTierGrowth: COST_TIER_MULT, // x per tier (> income mult, so the leap is earned each time)
 };
 
 export const MAX_LEVEL = 5; // shared cap for laser stats and object levels
@@ -103,8 +127,14 @@ const BEAM_LAYOUTS = [
 ];
 export const BEAM_PATTERNS = ['X', 'xXx', 'XXX', 'xXXXx', 'XXXXX'];
 
-// Effective beam count (small beams count as half): 1, 2, 3, 4, 5.
+// Effective beam count (small beams count as half): 1, 2, 3, 4, 5. Used for the
+// visual readout / semantics.
 export const beamSum = (beams) => BEAM_LAYOUTS[beams - 1].reduce((s, b) => s + (b.small ? 0.5 : 1), 0);
+
+// Gentle DPS factor for the beam level: 1.0 at level 1 rising to ~1.8 at level 5
+// (1 + (beams-1) * laserBeamMult). Beams stay a strong VISUAL upgrade (more/wider
+// beams) without a 5x DPS swing that would make the kill trivial.
+export const beamDpsFactor = (beams) => 1 + (beams - 1) * BASE.laserBeamMult;
 
 export function laserDps(tier, power, thickness, beams) {
   return (
@@ -112,7 +142,7 @@ export function laserDps(tier, power, thickness, beams) {
     Math.pow(BASE.laserTierMult, tier) *
     Math.pow(BASE.laserPowerMult, power - 1) *
     Math.pow(BASE.laserThickMult, thickness - 1) *
-    beamSum(beams)
+    beamDpsFactor(beams)
   );
 }
 
@@ -248,8 +278,11 @@ export const objectNextTierCost = (tier) =>
 // Tuning knobs for that reward live here with the rest of the balance math.
 export const OFFLINE = {
   minSeconds: 60, //          ignore stints shorter than this (no reward)
-  maxSeconds: 12 * 60 * 60, // cap the credited away-time at 12 hours
-  efficiency: 0.7, //         away-time earns 70% of live passive income
+  maxSeconds: 24 * 60 * 60, // cap the credited away-time at 24 hours (overnight returns)
+  efficiency: 1.0, //         away-time earns 100% of live passive income. Idle is the
+  //                          long-haul engine: active play decelerates into the wall,
+  //                          and the multi-hour idle is what carries you to the next tier.
+  welcomeSeconds: 120, //     small front-loaded bonus so a short stint still pops
 };
 
 // Estimated *passive* (laser-only, no clicking) coins per second for a given
@@ -267,14 +300,15 @@ export function passiveCoinsPerSecond(s) {
   if (dps <= 0) return 0;
   const sv = shardValue(s.shardLevel);
 
-  // Weighted sums across the unlocked shapes (weight = idx+1, matching pickSpawn).
-  let wCoins = 0; // Σ weight · coins-per-kill
-  let wShards = 0; // Σ weight · shards-per-kill
-  let wTime = 0; //  Σ weight · cycle-time (seconds)
+  // Sums across the unlocked shapes. pickSpawn() now cycles through them equally
+  // (one kill each per cycle), so every unlocked shape carries equal weight.
+  let wCoins = 0; // Σ coins-per-kill
+  let wShards = 0; // Σ shards-per-kill
+  let wTime = 0; //  Σ cycle-time (seconds)
   for (let idx = 0; idx < s.objects.length; idx++) {
     if (s.objects[idx] <= 0) continue; // locked shapes never spawn
     const level = Math.max(1, s.objects[idx]);
-    const weight = idx + 1;
+    const weight = 1;
     const shards = objectShardBase(s.objectTier, idx);
     const worth = sv * objectReward(s.objectTier, idx, level) * OFFLINE_SHARD_WORTH;
     const cycle = objectDurability(s.objectTier, idx, level) / dps + OFFLINE_RESPAWN;
@@ -299,6 +333,8 @@ export function offlineCoins(elapsedSeconds, ratePerSec) {
     return { coins: 0, seconds: 0, capped: false };
   }
   const seconds = Math.min(elapsedSeconds, OFFLINE.maxSeconds);
-  const coins = Math.floor(ratePerSec * seconds * OFFLINE.efficiency);
+  // Elapsed earnings (at >100% efficiency) plus a flat front-loaded "welcome
+  // back" bundle so the return always reads as a jackpot, not a trickle.
+  const coins = Math.floor(ratePerSec * (seconds * OFFLINE.efficiency + OFFLINE.welcomeSeconds));
   return { coins, seconds, capped: elapsedSeconds > OFFLINE.maxSeconds };
 }

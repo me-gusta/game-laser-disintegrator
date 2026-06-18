@@ -107,7 +107,7 @@ export class Scene {
     const c = this.target.container;
     this.shards.burst(c.x, c.y, this.shatterShards, this.target.color, this.currentWorth(), true);
     this.target.container.alpha = 0;
-    this.respawnTimer = 550;
+    this.respawnTimer = 800; // breathe between kills so each shatter lands
   }
 
   update(deltaMS) {
@@ -135,6 +135,8 @@ export class Scene {
       this._laserAccum += ld;
       this._laserTimer += dt;
       this.damage(ld);
+      // Drive the continuous on-screen erosion from the live durability fraction.
+      if (this.alive) this.target.setDamage(this.dur / this.maxDur);
       if (this._laserTimer >= 350 && this._laserAccum > 0 && this.alive) {
         this.floaters.pop(this._laserAccum, this.target.container.x, this.target.container.y - 10);
         this._laserAccum = 0;

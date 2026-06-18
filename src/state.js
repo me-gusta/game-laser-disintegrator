@@ -18,7 +18,10 @@ export const TIERS = [
 ];
 
 export const state = {
-  coins: 0,
+  // Small fresh-start cushion so the very first buy is a short save, not instant
+  // (keeps the "slow & weighty" feel). Returning players are unaffected:
+  // loadGame() overwrites coins from the save when one exists.
+  coins: 10,
   // Laser: one colour tier + three 5-level stats. Maxing all three unlocks the
   // next tier (which resets the stats to 1 and changes colour).
   laserTier: 0,
@@ -167,27 +170,19 @@ export function devNextObjectTier() {
   return state.objectTier;
 }
 
-// Pick the next object to disintegrate: a progressive-random choice among the
-// unlocked shapes in the current set, weighted so more advanced shapes (higher
-// index) show up more often while earlier ones still appear.
+// Cursor for the deterministic spawn cycle.
+let spawnCursor = -1;
+
+// Pick the next object to disintegrate: a predictable CYCLE through the unlocked
+// shapes in index order (circle -> rectangle -> triangle -> ... -> repeat). When
+// a new shape unlocks it joins the end of the cycle automatically.
 export function pickSpawn() {
-  const pool = [];
-  let total = 0;
+  const unlocked = [];
   for (let idx = 0; idx < SHAPES.length; idx++) {
-    if (state.objects[idx] > 0) {
-      const weight = idx + 1; // progressive bias toward later shapes
-      pool.push({ idx, weight });
-      total += weight;
-    }
+    if (state.objects[idx] > 0) unlocked.push(idx);
   }
-  const pickIdx = (() => {
-    if (pool.length === 0) return 0; // safety: always have the starter shape
-    let r = Math.random() * total;
-    for (const p of pool) {
-      r -= p.weight;
-      if (r <= 0) return p.idx;
-    }
-    return pool[pool.length - 1].idx;
-  })();
-  return { tier: state.objectTier, idx: pickIdx, level: Math.max(1, state.objects[pickIdx]) };
+  if (unlocked.length === 0) return { tier: state.objectTier, idx: 0, level: 1 }; // safety
+  spawnCursor = (spawnCursor + 1) % unlocked.length;
+  const idx = unlocked[spawnCursor];
+  return { tier: state.objectTier, idx, level: Math.max(1, state.objects[idx]) };
 }

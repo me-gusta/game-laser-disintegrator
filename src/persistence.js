@@ -11,7 +11,9 @@
 // ---------------------------------------------------------------------------
 import { state } from './state.js';
 
-const KEY = 'laserDisintegrator/save/v1';
+// v2: the economy was fundamentally rebalanced (slow-and-weighty curves); v1
+// saves hold progress on incompatible scales, so bump the key to discard them.
+const KEY = 'laserDisintegrator/save/v2';
 const AUTOSAVE_MS = 5000;
 
 // The plain numeric/array fields of `state` worth persisting (everything except
