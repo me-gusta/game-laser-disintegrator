@@ -4,7 +4,7 @@
 import $ from 'jquery';
 import * as P from './progression.js';
 import { fmt, fmtDuration } from './format.js';
-import { objectImageUrl } from './lab/assets.js';
+import { objectImageUrl, objectSetName, objectItemName } from './lab/assets.js';
 import {
   state,
   onChange,
@@ -24,7 +24,6 @@ import {
   TIERS,
 } from './state.js';
 
-const titleCase = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 // Player-facing description of each beam level (replaces the internal X/x layout
 // notation): index 0..4 == beam level 1..5.
 const BEAM_DESC = ['1 beam', '3 beams (2 narrow)', '3 beams', '5 beams (2 narrow)', '5 beams'];
@@ -206,25 +205,26 @@ function rebuildObjects() {
   const panel = $('#panel-objects').empty();
   objControls = [];
   const t = state.objectTier;
-  const tierDef = TIERS[t];
 
   const $set = $('<div class="tier current"></div>').appendTo(panel);
   $set.append(
-    `<h3>${tierDef.name} Set <span class="badge">tier ${t + 1}/${P.TIER_COUNT}</span></h3>`
+    `<h3>${objectSetName(t)} <span class="badge">tier ${t + 1}/${P.TIER_COUNT}</span></h3>`
   );
   const $list = $('<div class="objlist"></div>').appendTo($set);
 
   SHAPES.forEach((shape, idx) => {
-    // One row per object: its real art (a dark silhouette while locked), the
-    // shape name + level/durability, and the unlock/upgrade button.
+    // One row per object: its real art (a black silhouette while locked), the
+    // item name + level/durability, and the unlock/upgrade button. Once an item
+    // is maxed the button is replaced by a blue (theme) checkmark.
     const $row = $(`
       <div class="obj-row">
-        <img class="obj-img" src="${objectImageUrl(t, idx)}" alt="${shape}" />
+        <img class="obj-img" src="${objectImageUrl(t, idx)}" alt="${objectItemName(t, idx)}" />
         <div class="info">
-          <div class="name">${titleCase(shape)}</div>
+          <div class="name">${objectItemName(t, idx)}</div>
           <div class="lvl"></div>
         </div>
         <button class="buy"></button>
+        <span class="obj-check" title="Maxed out">✓</span>
       </div>`).appendTo($list);
 
     $row.find('button').on('click', () => buyObject(idx));
@@ -234,17 +234,20 @@ function rebuildObjects() {
       const unlocked = objectUnlocked(idx);
       const $lvl = $row.find('.lvl');
       const $btn = $row.find('button');
-      // Locked objects (not yet bought) render as a dark silhouette of the art.
+      // Locked objects (not yet bought) render as a black silhouette of the art.
       $row.toggleClass('locked', lvl === 0);
+      // A maxed item shows the checkmark in place of the (now useless) button.
+      const maxed = lvl >= P.MAX_LEVEL;
+      $row.toggleClass('maxed', maxed);
+      $btn.toggle(!maxed);
 
-      if (lvl >= P.MAX_LEVEL) {
+      if (maxed) {
         $lvl.text(`Lv ${lvl}/${P.MAX_LEVEL} · Maxed`);
-        $btn.html('Maxed').prop('disabled', true);
       } else if (lvl === 0 && !unlocked) {
-        // Gated: the previous shape hasn't been unlocked yet. Say so, instead of
-        // showing a buyable-looking Unlock+cost the player can't actually use.
+        // Gated: the previous item isn't maxed yet. Say so, instead of showing a
+        // buyable-looking Unlock+cost the player can't actually use.
         $lvl.text('Locked');
-        $btn.html('🔒 Unlock the<br>previous shape').prop('disabled', true);
+        $btn.html('🔒 Max out the<br>previous item').prop('disabled', true);
       } else if (lvl === 0) {
         const cost = P.objectUnlockCost(t, idx);
         $lvl.text('Locked');

@@ -330,10 +330,10 @@ button.buy .cost {
   object-fit: contain;
   filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5));
 }
-/* Locked objects show only a dark silhouette of the artwork. */
+/* Locked objects show only a solid black silhouette of the artwork. */
 .obj-row.locked .obj-img {
-  filter: brightness(0.18) grayscale(1);
-  opacity: 0.85;
+  filter: brightness(0) grayscale(1);
+  opacity: 1;
 }
 .obj-row .info {
   flex: 1 1 auto;
@@ -350,6 +350,23 @@ button.buy .cost {
 }
 .obj-row button.buy {
   flex: 0 0 auto;
+}
+/* Blue (theme-colour) checkmark shown in place of the button once an item is
+   maxed out — the previous item is "done" and unlocks the next one. */
+.obj-row .obj-check {
+  display: none;
+}
+.obj-row.maxed .obj-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 56px;
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--accent);
+  text-shadow: 0 0 10px rgba(108, 242, 255, 0.5);
 }
 
 /* Offline-reward modal */

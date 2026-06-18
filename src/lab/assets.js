@@ -28,6 +28,32 @@ export const VACUUM_TEX = [1, 2, 3].map((n) => Texture.from(`${BASE}/vacuum/${pa
 // set; later tiers get their own theme folder under /images/objects/<theme>/.
 export const OBJECT_THEMES = Array.from({ length: TIER_COUNT }, () => 'egypt');
 
+// Display strings (set title + the 5 item names) for each theme. The artwork,
+// the set heading and the per-row item labels are all driven from here so they
+// stay in lockstep. As new themes are added for later tiers, add an entry here
+// and point OBJECT_THEMES at it.
+const THEME_LABELS = {
+  egypt: {
+    setName: 'Ancient Egypt Set',
+    items: [
+      'Scarab Beetle Charm',
+      'Alabaster Canopic Jar',
+      'Bust of Nefertiti',
+      'Eye of Horus',
+      'Golden Mask of Tutankhamun',
+    ],
+  },
+};
+
+const themeFor = (tier) => OBJECT_THEMES[tier] || OBJECT_THEMES[0];
+
+// Title of the object set shown at colour `tier` (e.g. "Ancient Egypt Set").
+export const objectSetName = (tier) => THEME_LABELS[themeFor(tier)]?.setName || `${themeFor(tier)} Set`;
+
+// Name of the individual item at colour `tier`, shape `idx` (0..4).
+export const objectItemName = (tier, idx) =>
+  THEME_LABELS[themeFor(tier)]?.items[idx] || `Item ${idx + 1}`;
+
 // URL of the object art at colour `tier`, shape `idx` (0..4). The single source
 // of truth for the path, shared by the Pixi texture (below) and the DOM <img> in
 // the Objects tab so both always show the same artwork.

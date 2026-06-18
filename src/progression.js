@@ -303,26 +303,22 @@ export function passiveCoinsPerSecond(s) {
   if (dps <= 0) return 0;
   const sv = shardValue(s.shardLevel);
 
-  // Sums across the unlocked shapes. pickSpawn() now cycles through them equally
-  // (one kill each per cycle), so every unlocked shape carries equal weight.
-  let wCoins = 0; // Σ coins-per-kill
-  let wShards = 0; // Σ shards-per-kill
-  let wTime = 0; //  Σ cycle-time (seconds)
-  for (let idx = 0; idx < s.objects.length; idx++) {
-    if (s.objects[idx] <= 0) continue; // locked shapes never spawn
-    const level = Math.max(1, s.objects[idx]);
-    const weight = 1;
-    const shards = objectShardBase(s.objectTier, idx);
-    const worth = sv * objectReward(s.objectTier, idx, level) * OFFLINE_SHARD_WORTH;
-    const cycle = objectDurability(s.objectTier, idx, level) / dps + OFFLINE_RESPAWN;
-    wCoins += weight * shards * worth;
-    wShards += weight * shards;
-    wTime += weight * cycle;
+  // Only the LAST (highest-index) unlocked shape ever spawns — see pickSpawn().
+  // Income is therefore modelled on that single object's kill cycle.
+  let idx = -1;
+  for (let i = 0; i < s.objects.length; i++) {
+    if (s.objects[i] > 0) idx = i;
   }
-  if (wTime <= 0) return 0;
+  if (idx < 0) return 0; // nothing unlocked (shouldn't happen — shape 0 starts unlocked)
 
-  const coinProdRate = wCoins / wTime; //  coins/sec the laser *produces*
-  const shardProdRate = wShards / wTime; // shards/sec produced
+  const level = Math.max(1, s.objects[idx]);
+  const shards = objectShardBase(s.objectTier, idx);
+  const worth = sv * objectReward(s.objectTier, idx, level) * OFFLINE_SHARD_WORTH;
+  const cycle = objectDurability(s.objectTier, idx, level) / dps + OFFLINE_RESPAWN;
+  if (cycle <= 0) return 0;
+
+  const coinProdRate = shards * worth / cycle; //  coins/sec the laser *produces*
+  const shardProdRate = shards / cycle; //         shards/sec produced
   const vacRate = vacuumTotalRate(s.vacuumTier); // shards/sec the vacuum can collect
   // If the vacuum can't keep up, only a fraction of produced coins is realised.
   const throttle = shardProdRate > 0 ? Math.min(1, vacRate / shardProdRate) : 1;

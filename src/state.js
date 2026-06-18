@@ -107,11 +107,11 @@ export function buyVacuum() {
 }
 
 // --- objects ---------------------------------------------------------------
-// Objects unlock one-by-one in order: an object becomes available once the
-// previous one has been unlocked (bought at all). There is no restriction on
-// upgrading already-unlocked objects.
+// Objects unlock one-by-one in order: an object becomes available only once the
+// previous one has been fully MAXED (level == MAX_LEVEL). You cannot buy a new
+// object while the previous one still has upgrades left.
 export function objectUnlocked(idx) {
-  return idx === 0 || state.objects[idx - 1] >= 1;
+  return idx === 0 || state.objects[idx - 1] >= P.MAX_LEVEL;
 }
 
 export function buyObject(idx) {
@@ -184,23 +184,17 @@ export function resetState() {
   state.vacuumTier = 0;
   state.objectTier = 0;
   state.objects = [1, 0, 0, 0, 0];
-  spawnCursor = -1;
   notify();
 }
 
-// Cursor for the deterministic spawn cycle.
-let spawnCursor = -1;
-
-// Pick the next object to disintegrate: a predictable CYCLE through the unlocked
-// shapes in index order (circle -> rectangle -> triangle -> ... -> repeat). When
-// a new shape unlocks it joins the end of the cycle automatically.
+// Pick the next object to disintegrate: ALWAYS the last (highest-index) unlocked
+// shape — i.e. the newest one the player has bought. Because a new object can
+// only be unlocked after the previous one is maxed, this is also the only object
+// still being worked on, so it is the single thing that spawns in the lab.
 export function pickSpawn() {
-  const unlocked = [];
-  for (let idx = 0; idx < SHAPES.length; idx++) {
-    if (state.objects[idx] > 0) unlocked.push(idx);
+  let idx = 0;
+  for (let i = 0; i < SHAPES.length; i++) {
+    if (state.objects[i] > 0) idx = i;
   }
-  if (unlocked.length === 0) return { tier: state.objectTier, idx: 0, level: 1 }; // safety
-  spawnCursor = (spawnCursor + 1) % unlocked.length;
-  const idx = unlocked[spawnCursor];
   return { tier: state.objectTier, idx, level: Math.max(1, state.objects[idx]) };
 }
