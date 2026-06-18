@@ -40,7 +40,12 @@ const cls = ($el, name, on) => { const n = $el[0]; const k = '__c_' + name; if (
 
 const staticControls = []; // refresh() callbacks for the fixed laser/shards rows
 let objControls = []; //      refresh() callbacks for the (rebuilt) objects panel
-let objSig = null; //         structural signature of the objects panel
+// Structural state the objects panel was last built for. Compared field-by-field
+// each refresh (see objectsStructureChanged) instead of building+comparing a
+// joined signature string every frame, so the steady-state check allocates
+// nothing. -1 / [] force the first build.
+let objSigTier = -1;
+let objSigLevels = [];
 
 // Build a generic upgrade row. spec.refresh(els) updates dynamic text/disabled.
 function upgradeRow(panel, build) {
@@ -202,9 +207,18 @@ function buildCoins() {
 
 // ----------------------------- Objects tab ---------------------------------
 // Only one set of shapes is shown, at the current colour tier. Rebuilt when the
-// tier or any level changes; affordability refreshed cheaply every change.
-function objectsSignature() {
-  return state.objectTier + ':' + state.objects.join(',');
+// tier or any level changes (a level 0->1 unlock reveals the item's name/art,
+// which is baked in at build time); affordability refreshed cheaply every change.
+// Allocation-free: compares the live tier/levels against the snapshot taken at
+// the last rebuild rather than materialising a signature string.
+function objectsStructureChanged() {
+  if (state.objectTier !== objSigTier) return true;
+  const o = state.objects;
+  if (o.length !== objSigLevels.length) return true;
+  for (let i = 0; i < o.length; i++) {
+    if (o[i] !== objSigLevels[i]) return true;
+  }
+  return false;
 }
 
 function rebuildObjects() {
@@ -307,9 +321,9 @@ function refresh() {
 function runRefresh() {
   refreshQueued = false;
   tx($coins, fmtCoins(state.coins));
-  const sig = objectsSignature();
-  if (sig !== objSig) {
-    objSig = sig;
+  if (objectsStructureChanged()) {
+    objSigTier = state.objectTier;
+    objSigLevels = state.objects.slice(); // snapshot only on actual change (rare)
     rebuildObjects();
   }
   staticControls.forEach((fn) => fn());

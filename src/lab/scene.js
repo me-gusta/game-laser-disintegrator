@@ -71,7 +71,10 @@ export class Scene {
       this.floaters.container
     );
 
-    this.lastLaserSig = ''; // tracks laser stats so we only rebuild beams on change
+    // Tracks laser stats so we only rebuild beams on change. Kept as four numbers
+    // (compared field-by-field in update) rather than a joined string, so the
+    // per-frame change check allocates nothing. -1 forces the first build.
+    this._lastLaser = { tier: -1, power: -1, thickness: -1, beams: -1 };
     this._vacTier = -1; //   tracks vacuumTier so we only rebuild cleaner configs on change
     this.cur = { tier: 0, idx: 0, level: 1 }; // object currently being disintegrated
     this.alive = false;
@@ -144,9 +147,17 @@ export class Scene {
     const dt = Math.min(deltaMS, 250);
 
     // Sync laser cosmetics whenever any laser stat changes.
-    const sig = `${state.laserTier}/${state.laserPower}/${state.laserThickness}/${state.laserBeams}`;
-    if (sig !== this.lastLaserSig) {
-      this.lastLaserSig = sig;
+    const ll = this._lastLaser;
+    if (
+      state.laserTier !== ll.tier ||
+      state.laserPower !== ll.power ||
+      state.laserThickness !== ll.thickness ||
+      state.laserBeams !== ll.beams
+    ) {
+      ll.tier = state.laserTier;
+      ll.power = state.laserPower;
+      ll.thickness = state.laserThickness;
+      ll.beams = state.laserBeams;
       this.laser.setVisual(P.laserVisual(state.laserTier, state.laserPower, state.laserThickness, state.laserBeams));
     }
 

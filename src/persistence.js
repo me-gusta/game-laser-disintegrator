@@ -4,10 +4,11 @@
 // stamps a `savedAt` wall-clock time so main.js can work out how long the
 // player was away and grant offline progression (see progression.offlineCoins).
 //
-// We persist on every way out of the page — closing/reloading the tab
-// (beforeunload), bfcache/mobile navigation (pagehide), and the tab being
-// hidden i.e. switched away or the screen locked (visibilitychange) — plus a
-// periodic autosave as a backstop so an abrupt kill loses at most a few seconds.
+// We persist on every way out of the page — closing/reloading the tab and
+// bfcache/mobile navigation (pagehide), and the tab being hidden i.e. switched
+// away or the screen locked (visibilitychange) — plus a periodic autosave as a
+// backstop so an abrupt kill loses at most a few seconds. ('beforeunload' is
+// avoided on purpose: it would disable the back/forward cache.)
 // ---------------------------------------------------------------------------
 import { state } from './state.js';
 
@@ -81,8 +82,12 @@ export function loadGame() {
 }
 
 // Register all the "leaving" triggers plus a periodic backstop. Call once.
+// We deliberately do NOT use 'beforeunload' — it makes the page ineligible for
+// the browser's back/forward cache (bfcache). 'pagehide' fires on the same
+// teardown paths (close/reload/navigation, including bfcache eviction) and
+// 'visibilitychange' catches tab-switch / screen-lock, so saving stays covered
+// without the bfcache penalty.
 export function installAutosave() {
-  window.addEventListener('beforeunload', saveGame);
   window.addEventListener('pagehide', saveGame);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') saveGame();

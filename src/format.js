@@ -2,6 +2,13 @@
 // Compact number formatting for big idle numbers, shared by the UI and the
 // in-canvas floating damage text.
 
+// Unit suffixes, hoisted to module scope so the hot formatters don't allocate a
+// fresh array on every call (fmt() runs dozens of times per frame from the UI
+// refresh + once per floating number). fmtCoins keeps a leading '' so index 0 is
+// the un-suffixed thousands/millions range; fmt starts at 'K'.
+const COIN_UNITS = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
+const FMT_UNITS = ['K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
+
 // Formatting for the main coin counter. The full number is shown with
 // comma-grouped digits all the way through the millions (up to 999,999,999).
 // Only once it reaches a billion do we clamp: divide down by 1000s until the
@@ -10,26 +17,24 @@
 export function fmtCoins(n) {
   let x = Math.max(0, Math.floor(n));
   if (x < 1e9) return x.toLocaleString('en-US'); // thousands & millions: unclamped
-  const units = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
   let u = 0;
   // Keep dividing until the mantissa is under 100,000 (fits "__,___").
-  while (x >= 1e5 && u < units.length - 1) {
+  while (x >= 1e5 && u < COIN_UNITS.length - 1) {
     x = Math.floor(x / 1000);
     u++;
   }
-  return x.toLocaleString('en-US') + units[u];
+  return x.toLocaleString('en-US') + COIN_UNITS[u];
 }
 
 export function fmt(n) {
   if (n < 1000) return String(Math.round(n * 10) / 10).replace(/\.0$/, '');
-  const units = ['K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
   let u = -1;
   let x = n;
-  while (x >= 1000 && u < units.length - 1) {
+  while (x >= 1000 && u < FMT_UNITS.length - 1) {
     x /= 1000;
     u++;
   }
-  return x.toFixed(2) + units[u];
+  return x.toFixed(2) + FMT_UNITS[u];
 }
 
 // Human-readable away-time, e.g. "12h 0m", "5m 30s", "45s". Shows at most the

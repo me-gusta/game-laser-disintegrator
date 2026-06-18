@@ -219,8 +219,18 @@ export class Laser {
       for (const g of this.beams) g.alpha = beamAlpha;
     }
 
-    // Beam group glow + muzzle lens fade out with the firing intensity.
-    if (this.visual) this.glow.outerStrength = this.visual.glow * f;
+    // Beam group glow + muzzle lens fade out with the firing intensity. The glow
+    // is a full filter (render-to-texture) pass over the beam layer every frame,
+    // so when the laser is fully powered down — the respawn gap, where the beams
+    // are already invisible (alpha 0) — detach the filter entirely instead of
+    // running the pass at zero strength. It's re-attached the moment it powers
+    // back up.
+    if (f <= 0) {
+      if (this.beamLayer.filters) this.beamLayer.filters = null;
+    } else {
+      if (!this.beamLayer.filters) this.beamLayer.filters = [this.glow];
+      if (this.visual) this.glow.outerStrength = this.visual.glow * f;
+    }
     this.lens.alpha = f * (0.75 + 0.25 * Math.sin(this.time * 0.04));
 
     // Animate the guns while they fire: a small steady recoil (kicked back along
