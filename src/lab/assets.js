@@ -24,9 +24,18 @@ export const LASER_TEX = Array.from({ length: TIER_COUNT }, (_, i) =>
 // upgrade is levelled): vacuum/01.png .. 03.png. Drawn facing left.
 export const VACUUM_TEX = [1, 2, 3].map((n) => Texture.from(`${BASE}/vacuum/${pad2(n)}.png`));
 
-// Object art is themed per colour tier. For now every tier uses the "egypt"
-// set; later tiers get their own theme folder under /images/objects/<theme>/.
-export const OBJECT_THEMES = Array.from({ length: TIER_COUNT }, () => 'egypt');
+// Object art is themed per colour tier, one theme folder per tier under
+// /images/objects/<theme>/. Index = 0-based tier (UI shows it +1). Any tier past
+// the end of this list falls back to the first theme.
+export const OBJECT_THEMES = [
+  'egypt', //     tier 1
+  'arthur', //    tier 2
+  'japan', //     tier 3
+  'pirates', //   tier 4
+  'rome', //      tier 5
+  'vikings', //   tier 6
+  'wild_west', // tier 7
+];
 
 // Display strings (set title + the 5 item names) for each theme. The artwork,
 // the set heading and the per-row item labels are all driven from here so they
@@ -42,6 +51,30 @@ const THEME_LABELS = {
       'Eye of Horus',
       'Golden Mask of Tutankhamun',
     ],
+  },
+  arthur: {
+    setName: "King Arthur's Relics",
+    items: ['Knight Helmet', 'Knight Shield', 'King Crown', 'Holy Grail', 'Iron Gauntlet'],
+  },
+  japan: {
+    setName: 'Feudal Japan',
+    items: ['Ninja Star', 'Samurai Mask', 'Katana', 'Paper Lantern', 'Scroll'],
+  },
+  pirates: {
+    setName: 'Pirates',
+    items: ['Pirate Hook', 'Flintlock Pistol', 'Spyglass', 'Compass', 'Jolly Roger'],
+  },
+  rome: {
+    setName: 'Ancient Rome',
+    items: ['Gladiator Helmet', 'Golden Eagle', 'Gladius', 'Shield', 'Bust of Julius Caesar'],
+  },
+  vikings: {
+    setName: 'Vikings',
+    items: ['Viking Helmet', 'Rune Stone', 'Horn', 'Bearded Axe', 'Drakkar'],
+  },
+  wild_west: {
+    setName: 'Wild West',
+    items: ['Cowboy Boot', 'Wanted Poster', 'Cavalry Sabre', 'Revolver Cylinder', 'Sheriff Badge'],
   },
 };
 
