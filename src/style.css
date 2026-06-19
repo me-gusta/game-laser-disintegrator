@@ -228,6 +228,7 @@ body {
   border-radius: 10px;
 }
 .row .info {
+  flex: 1 1 auto;
   min-width: 0;
 }
 .row .name {
@@ -328,6 +329,26 @@ button.buy:disabled {
 }
 button.buy .cost {
   color: var(--gold);
+}
+
+/* Small inline coin chip stamped beside a price (buy/upgrade/next-tier buttons)
+   and the wallet's coins/sec headline, so a figure always reads as "coins". */
+.coin-sm {
+  height: 0.95em;
+  width: auto;
+  vertical-align: -0.15em;
+  margin: 0 1px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+
+/* Game-asset art seated on the LEFT of a generic upgrade row (the Vacuum card),
+   mirroring the relic rows' .obj-img treatment. */
+.row .row-img {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5));
 }
 
 /* Objects grid */

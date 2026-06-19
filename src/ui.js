@@ -41,6 +41,15 @@ const CHECK_SVG =
   '<circle class="check-ring" cx="18" cy="18" r="15"/>' +
   '<path class="check-mark" d="M11 18.5 L16 23.5 L26 12.5"/></svg>';
 
+// Small coin chip stamped beside a price on every buy/upgrade button (and the
+// wallet's coins/sec headline) so a number always reads as "coins", not a bare
+// figure. Same /images/coin.png the wallet uses; sized down via CSS (.coin-sm).
+const COIN_SM = '<img class="coin-sm" src="/images/coin.png" alt="" aria-hidden="true" />';
+
+// The Vacuum upgrade's game-asset art (first cleaner sprite), shown on the left
+// of its card like the relic rows. Same /images/vacuum art the lab sprites use.
+const VACUUM_IMG = '/images/vacuum/01.png';
+
 // A row of level pips: `lvl` filled (.on) out of `max`. Built at rebuild time —
 // pip fill only changes on a level change, which is exactly what rebuilds.
 const pips = (lvl, max) =>
@@ -145,9 +154,12 @@ let objSigLevels = []; // raw levels at last rebuild (for unlock/maxed anim dete
 let objSigCats = []; //  structural category per relic at last rebuild (rebuild trigger)
 
 // Build a generic upgrade row. spec.refresh(els) updates dynamic text/disabled.
+// An optional build.icon (image URL) seats the game-asset art on the LEFT of the
+// card, mirroring the relic rows in the Objects tab.
 function upgradeRow(panel, build) {
   const $row = $(`
     <div class="row">
+      ${build.icon ? `<img class="row-img" src="${build.icon}" alt="" />` : ''}
       <div class="info">
         <div class="name"></div>
         <div class="sub"></div>
@@ -176,7 +188,7 @@ function nextTierButton(panel, build, controls) {
       const cost = build.cost();
       const affordable = state.coins >= cost;
       if (affordable) {
-        htm($btn, `NEXT TIER → ${build.nextName()}<br><span class="cost">${fmt(cost)}</span>`);
+        htm($btn, `NEXT TIER → ${build.nextName()}<br><span class="cost">${COIN_SM}${fmt(cost)}</span>`);
       } else {
         // A multi-minute save: show how close it is + a coins/sec-based ETA so the
         // wait reads as anticipation rather than a bare price tag.
@@ -187,7 +199,7 @@ function nextTierButton(panel, build, controls) {
           $btn,
           `NEXT TIER → ${build.nextName()}` +
             `<span class="nt-prog"><span class="nt-fill" style="width:${(prog * 100).toFixed(1)}%"></span></span>` +
-            `<span class="nt-meta"><span class="cost">${fmt(state.coins)} / ${fmt(cost)}</span>${eta}</span>`
+            `<span class="nt-meta"><span class="cost">${COIN_SM}${fmt(state.coins)} / ${fmt(cost)}</span>${eta}</span>`
         );
       }
       setBuyDisabled($btn, !affordable);
@@ -208,7 +220,7 @@ function laserStatRow(panel, { label, key, cost, buy, help }) {
         htm(els.btn, 'Maxed'); dis(els.btn, true);
       } else {
         const c = cost(state.laserTier, lvl);
-        htm(els.btn, `Upgrade<br><span class="cost">${fmt(c)}</span>`);
+        htm(els.btn, `Upgrade<br><span class="cost">${COIN_SM}${fmt(c)}</span>`);
         setBuyDisabled(els.btn, state.coins < c);
       }
     },
@@ -227,7 +239,7 @@ function buildLaser() {
       tx(els.name, `Click Power · Lv ${lvl}`);
       htm(els.sub, `<span class="val">${fmt(P.clickDamage(lvl, state.objectTier))}</span> damage per click`);
       const cost = P.clickCost(lvl);
-      htm(els.btn, `Upgrade<br><span class="cost">${fmt(cost)}</span>`);
+      htm(els.btn, `Upgrade<br><span class="cost">${COIN_SM}${fmt(cost)}</span>`);
       setBuyDisabled(els.btn, state.coins < cost);
     },
   });
@@ -285,20 +297,12 @@ function buildLaser() {
 function buildCoins() {
   const panel = $('#panel-coins').empty();
 
-  upgradeRow(panel, {
-    buy: buyShard,
-    refresh(els) {
-      const lvl = state.shardLevel;
-      tx(els.name, `Shard Value · Lv ${lvl}`);
-      htm(els.sub, `<span class="val">${fmt(P.shardValue(lvl))}×</span> coins per shard`);
-      const cost = P.shardCost(lvl);
-      htm(els.btn, `Upgrade<br><span class="cost">${fmt(cost)}</span>`);
-      setBuyDisabled(els.btn, state.coins < cost);
-    },
-  });
-
+  // Vacuum sits ABOVE Shard Value: it's the bottleneck the player feels first
+  // (uncollected shards pile up), so it leads the income tab. The vacuum-cleaner
+  // game art sits on the LEFT of the card, like the relic rows.
   upgradeRow(panel, {
     buy: buyVacuum,
+    icon: VACUUM_IMG,
     refresh(els) {
       const tier = state.vacuumTier;
       const maxed = tier >= P.BASE.vacuumTiers - 1;
@@ -312,9 +316,21 @@ function buildCoins() {
         htm(els.btn, 'Maxed'); dis(els.btn, true);
       } else {
         const cost = P.vacuumCost(tier);
-        htm(els.btn, `Upgrade<br><span class="cost">${fmt(cost)}</span>`);
+        htm(els.btn, `Upgrade<br><span class="cost">${COIN_SM}${fmt(cost)}</span>`);
         setBuyDisabled(els.btn, state.coins < cost);
       }
+    },
+  });
+
+  upgradeRow(panel, {
+    buy: buyShard,
+    refresh(els) {
+      const lvl = state.shardLevel;
+      tx(els.name, `Shard Value · Lv ${lvl}`);
+      htm(els.sub, `<span class="val">${fmt(P.shardValue(lvl))}×</span> coins per shard`);
+      const cost = P.shardCost(lvl);
+      htm(els.btn, `Upgrade<br><span class="cost">${COIN_SM}${fmt(cost)}</span>`);
+      setBuyDisabled(els.btn, state.coins < cost);
     },
   });
 }
@@ -423,7 +439,7 @@ function rebuildObjects(animUnlock = [], animMaxed = []) {
         (justUnlocked ? `<span class="lock-icon unlocking">${LOCK_SVG}</span>` : '') +
         `<div class="info"><div class="name">${name}</div>` +
         `<div class="lvl"></div></div>` +
-        `<button class="buy"><span class="verb"></span><br><span class="cost"></span></button></div>`
+        `<button class="buy"><span class="verb"></span><br><span class="cost">${COIN_SM}<span class="cost-n"></span></span></button></div>`
     ).appendTo($list);
 
     if (justUnlocked) {
@@ -440,7 +456,7 @@ function rebuildObjects(animUnlock = [], animMaxed = []) {
 
     const $btn = $row.find('button');
     const $verb = $btn.find('.verb');
-    const $cost = $btn.find('.cost');
+    const $cost = $btn.find('.cost-n');
     const $lvl = $row.find('.lvl');
     $btn.on('click', () => {
       if (buyObject(idx)) squash($btn[0]);
@@ -566,12 +582,13 @@ function closeSheet() {
 // so all checks use === / !== TUT.DONE, never < / >=.
 const TUT = { TAP: 0, BUYCLICK: 1, RELICS: 2, DONE: 3, OPENUP: 4 };
 
-// Inline tap/hand icon (no emoji). Inherits the badge's text colour.
+// Inline tap/hand icon (no emoji). Inherits the badge's text colour via
+// currentColor. The leading transparent rect is the icon's full 16×16 bounding
+// box (keeps it from being cropped to the visible path's bbox).
 const TAP_ICON =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
-  'stroke-linecap="round" stroke-linejoin="round">' +
-  '<path d="M9 11.4V6a1.8 1.8 0 0 1 3.6 0v5"/>' +
-  '<path d="M12.6 11V8.2a1.8 1.8 0 0 1 3.6 0V14a6 6 0 0 1-6 6h-.7a6 6 0 0 1-5-2.9l-2-3.4a1.6 1.6 0 0 1 2.8-1.6l1.2 1.5"/>' +
+  '<svg viewBox="0 0 16 16">' +
+  '<path d="M0 0h16v16H0z" fill="none"/>' +
+  '<path fill="currentColor" d="M4.75 6.25a1.06 1.06 0 0 1 1.5 0l1.867 1.867l3.309-1.378a1 1 0 0 1 1.043.171l1.923 1.682a2 2 0 0 1 .096 2.92L12.44 13.56a1.5 1.5 0 0 1-.43.298a1 1 0 0 1-.51.142H8a1 1 0 1 1 0-2h1L4.75 7.75a1.06 1.06 0 0 1 0-1.5M2 6a1 1 0 0 1 0 2H1a1 1 0 0 1 0-2zm-.707-3.707a1 1 0 0 1 1.414 0l1 1a1 1 0 1 1-1.414 1.414l-1-1a1 1 0 0 1 0-1.414M6 1a1 1 0 0 1 1 1v1a1 1 0 0 1-2 0V2a1 1 0 0 1 1-1"/>' +
   '</svg>';
 
 function tutBadge() {
@@ -800,7 +817,7 @@ function runRefresh() {
   // Live "coins/sec" headline — a calm secondary stat (hidden until income > 0).
   const rate = P.passiveCoinsPerSecond(state);
   if (rate > 0) {
-    tx($cps, `▲ ${fmt(rate)}/s`);
+    htm($cps, `${fmt(rate)}${COIN_SM}/s`);
     if ($cps && $cps[0]) $cps[0].removeAttribute('hidden');
   } else if ($cps && $cps[0]) {
     $cps[0].setAttribute('hidden', '');

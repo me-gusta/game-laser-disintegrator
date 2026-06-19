@@ -193,6 +193,19 @@ export class Scene {
     // their real elapsed time so coin/damage rates stay wall-clock accurate.
     const dt = Math.min(deltaMS, 250);
 
+    // Buying a new relic (or advancing the object tier) makes the object on screen
+    // stale — pickSpawn would now yield a different relic. Explode it instantly so
+    // the freshly-bought relic takes the stage, rather than waiting for the current
+    // one to erode away. We compare against the highest unlocked relic without
+    // allocating (no pickSpawn() object) since this runs every frame; a plain
+    // level-up of the current relic leaves tier+idx unchanged and never triggers.
+    if (this.alive) {
+      const objs = state.objects;
+      let idx = 0;
+      for (let i = 0; i < objs.length; i++) if (objs[i] > 0) idx = i;
+      if (state.objectTier !== this.cur.tier || idx !== this.cur.idx) this.shatter();
+    }
+
     // Sync laser cosmetics whenever any laser stat changes.
     const ll = this._lastLaser;
     if (

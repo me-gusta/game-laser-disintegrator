@@ -10,7 +10,7 @@ import { Ticker } from '@pixi/ticker';
 import { Scene } from './lab/scene.js';
 import { initUI, showOfflineReward, showTierBanner, tutOnShatter } from './ui.js';
 import { state, addCoins, devNextLaserTier, devNextObjectTier, resetState, recordUnlock } from './state.js';
-import { fmt } from './format.js';
+import { fmt, fmtCoins } from './format.js';
 import { passiveCoinsPerSecond, offlineCoins, LASER_TIER_NAMES, LASER_TIER_COLORS } from './progression.js';
 import { loadGame, saveGame, clearSave, installAutosave } from './persistence.js';
 
@@ -153,7 +153,9 @@ function updateDurability() {
     const bounty = scene.currentBounty();
     if (lastBounty < 0 || Math.abs(bounty - lastBounty) > lastBounty * 0.01 + 0.5) {
       lastBounty = bounty;
-      rewardVal.textContent = fmt(bounty);
+      // Floored, decimal-free readout (fmtCoins floors + comma-groups) — the
+      // reward reads as a clean whole number rather than "1.23K".
+      rewardVal.textContent = fmtCoins(bounty);
     }
   }
   if (Math.abs(frac - lastDurFrac) < 0.005) return;
