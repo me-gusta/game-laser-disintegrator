@@ -110,6 +110,7 @@ body {
 #wallet-card {
   display: flex;
   align-items: center;
+  justify-content: flex-end; /* coin count + icon hug the right edge */
   gap: 10px;
   background: var(--panel);
   border: 1px solid var(--border);
@@ -117,6 +118,7 @@ body {
   padding: 12px 16px;
 }
 #wallet-card .coin-icon {
+  order: 1; /* icon sits to the RIGHT of the number */
   height: 22px;
   width: auto;
   filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
@@ -584,7 +586,9 @@ button.buy .cost {
 }
 
 /* ---------------------------------------------------------------------------
-   Narrow / vertical-mobile layout (phones down to iPhone SE ~320px).
+   Narrow / vertical-mobile layout — PORTRAIT phones (down to iPhone SE ~320px).
+   Scoped to portrait so that flipping a phone to landscape (short, wide) drops
+   back to the side-by-side layout below instead of this stacked bottom-sheet one.
 
    The lab view fills the viewport WITHOUT page scroll: coins pinned to the top,
    the canvas flex-fills the leftover height (img-like fit, so it shrinks to fit
@@ -596,7 +600,7 @@ button.buy .cost {
    resize the canvas's *display* box via CSS, so the GPU draws the same pixels,
    all baked-in scene positions stay valid, and no game state is touched.
    --------------------------------------------------------------------------- */
-@media (max-width: 760px) {
+@media (max-width: 760px) and (orientation: portrait) {
   /* Bound the column to exactly the (dynamic) viewport height so the lab view
      fits without page scroll: the canvas (the only flexible child) shrinks to
      absorb the slack left by the coin bar, durability and the Upgrades bar. */
@@ -618,6 +622,7 @@ button.buy .cost {
   }
   #wallet-card {
     order: -1; /* coins pinned to the very top, visible while playing */
+    width: 100%; /* span the full width like the durability card */
   }
 
   /* Canvas + durability fill the space between the coin bar and the bottom bar. */
@@ -655,6 +660,7 @@ button.buy .cost {
   /* The "Upgrades" trigger: a full-width accent bar at the bottom of the lab. */
   #open-upgrades {
     display: block;
+    position: relative; /* anchor for the count badge */
     flex: 0 0 auto;
     margin-top: 10px;
     padding: 14px;
@@ -670,6 +676,30 @@ button.buy .cost {
   }
   #open-upgrades:active {
     background: rgba(108, 242, 255, 0.2);
+  }
+  /* Green count of available upgrades. Absolutely positioned so it never shifts
+     the centred "Upgrades" label; shown (display:block) only when count > 0. */
+  #upg-badge {
+    display: none;
+    position: absolute;
+    top: 50%;
+    right: 14px;
+    transform: translateY(-50%);
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    box-sizing: border-box;
+    border-radius: 11px;
+    background: var(--good);
+    color: #0a1410;
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 22px;
+    text-align: center;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  }
+  #upg-badge.shown {
+    display: block;
   }
 
   /* The upgrade menu as a bottom sheet sliding up from the bottom edge. */
@@ -734,6 +764,72 @@ button.buy .cost {
   #sheet-backdrop.show {
     opacity: 1;
     pointer-events: auto;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   LANDSCAPE phones (short, wide viewports): restore the desktop-like side-by-
+   side layout — lab on the left, the menu as a normal right-hand column — but
+   fit the canvas to the short height so it never overflows. Keyed on a short
+   viewport height so tablets/desktops (taller) keep their native layout and
+   only phones-on-their-side get this. The portrait bottom-sheet block above
+   does not apply here, so its trigger/handle/backdrop stay hidden.
+   --------------------------------------------------------------------------- */
+@media (orientation: landscape) and (max-height: 500px) {
+  #game {
+    height: 100vh;
+    height: 100dvh;
+  }
+  /* #layout stays the default row (lab-col | side-col); just bound its height. */
+  #layout {
+    height: 100%;
+    min-height: 0;
+    align-items: stretch;
+  }
+  /* Lab column hugs the (height-fitted) canvas, but never wider than half the
+     viewport so the menu column always keeps a usable share of the width. */
+  #lab-col {
+    height: 100%;
+    min-height: 0;
+    flex: 0 1 auto;
+    max-width: 50%;
+  }
+  #lab {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    border: none; /* the canvas keeps its own rounded corners */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* The #game→#lab height chain is fully bound (100dvh), so giving the canvas a
+     definite height makes its width derive from the 480:680 ratio — the lab
+     column then shrink-wraps that width instead of reserving the canvas's full
+     480px intrinsic width (which was squashing the menu column). */
+  #lab canvas {
+    width: auto !important;
+    height: 100% !important;
+    max-width: 100%;
+  }
+  /* Right column scrolls within the viewport height instead of growing the page. */
+  #side-col {
+    height: 100%;
+    min-height: 0;
+  }
+  #upgrades {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .panel {
+    max-height: none;
+  }
+  .panel.active {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
   }
 }
 

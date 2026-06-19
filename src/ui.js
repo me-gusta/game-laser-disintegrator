@@ -340,6 +340,7 @@ function rebuildObjects(animUnlock = [], animMaxed = []) {
 // refresh per animation frame. The coin counter rides along on that same tick,
 // which is plenty smooth for a counter.
 let $coins = null; //         cached so we don't re-query #coins each refresh
+let $upgBadge = null; //      mobile "Upgrades" button's available-count badge
 let refreshQueued = false;
 
 function refresh() {
@@ -376,6 +377,14 @@ function runRefresh() {
   }
   staticControls.forEach((fn) => fn());
   objControls.forEach((fn) => fn());
+
+  // Mobile "Upgrades" badge: how many upgrades are actionable right now. The
+  // controls above just left every affordable buy / next-tier button enabled
+  // (maxed and unaffordable ones disabled), so the count is simply the enabled
+  // buttons inside the panels — tab buttons live in #tabs, outside .panel.
+  const avail = document.querySelectorAll('.panel button:not(:disabled)').length;
+  tx($upgBadge, String(avail));
+  cls($upgBadge, 'shown', avail > 0);
 }
 
 function showTab(name) {
@@ -411,6 +420,7 @@ export function showOfflineReward({ coins, seconds, capped }) {
 
 export function initUI() {
   $coins = $('#coins');
+  $upgBadge = $('#upg-badge');
   buildLaser();
   buildCoins();
   $('#tabs button').on('click', function () {

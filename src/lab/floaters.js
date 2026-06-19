@@ -12,7 +12,7 @@ const BASE = {
   fontFamily: 'Impact, "Arial Black", Haettenschweiler, sans-serif',
   fontSize: 34,
   fontWeight: 'bold',
-  stroke: 0xffffff, //      white outline
+  stroke: 0x000000, //      white outline
   strokeThickness: 4,
   lineJoin: 'round',
 };
@@ -91,7 +91,7 @@ export class Floaters {
   styleFor(color) {
     let st = this.styles.get(color);
     if (!st) {
-      st = new TextStyle({ ...BASE, fill: vivid(color) });
+      st = new TextStyle({ ...BASE, fill: color });
       this.styles.set(color, st);
     }
     return st;
@@ -100,7 +100,7 @@ export class Floaters {
   // Style for coin pickups: dark-yellow ink on the shared white outline. Built
   // once and cached.
   coinStyle() {
-    if (!this._coinStyle) this._coinStyle = new TextStyle({ ...BASE, fill: 0xc9a227 });
+    if (!this._coinStyle) this._coinStyle = new TextStyle({ ...BASE, fill: 0xc9a227});
     return this._coinStyle;
   }
 
