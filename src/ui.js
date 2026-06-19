@@ -26,6 +26,27 @@ import {
 
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
 
+// Inline SVGs for the relics panel. Strokes use currentColor so CSS can theme
+// them (muted lock, green checkmark) without duplicating markup. The named sub-
+// paths (.shackle, .check-ring, .check-mark) are the animation targets.
+const LOCK_SVG =
+  '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<rect x="5" y="11" width="14" height="9" rx="2"/>' +
+  '<path class="shackle" d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+const CHECK_SVG =
+  '<svg class="check-svg" viewBox="0 0 36 36" width="34" height="34" fill="none" ' +
+  'stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">' +
+  '<circle class="check-ring" cx="18" cy="18" r="15"/>' +
+  '<path class="check-mark" d="M11 18.5 L16 23.5 L26 12.5"/></svg>';
+
+// A row of level pips: `lvl` filled (.on) out of `max`. Built at rebuild time —
+// pip fill only changes on a level change, which is exactly what rebuilds.
+const pips = (lvl, max) =>
+  '<span class="pips">' +
+  Array.from({ length: max }, (_, k) => `<span class="pip${k < lvl ? ' on' : ''}"></span>`).join('') +
+  `</span><span class="pip-label">${lvl}/${max}</span>`;
+
 // Diffed DOM writes. The full panel refresh runs once per animation frame and
 // touches every row, but almost nothing changes between frames (a button's text
 // only moves when its cost does, on a buy). These skip the actual DOM write —
@@ -221,10 +242,17 @@ function objectsStructureChanged() {
   return false;
 }
 
-function rebuildObjects() {
+// Rebuild the relics panel. animUnlock[idx] / animMaxed[idx] mark the rows that
+// JUST transitioned this rebuild (computed in runRefresh); those rows are built
+// with one-shot CSS animation classes that auto-play once on creation. A rebuild
+// only happens on a tier or level change, so each relic's state (gated/buyable/
+// owned/maxed), name, art and pip fill are baked here; the per-frame callback
+// only re-checks affordability (coins) for rows that still have a live button.
+function rebuildObjects(animUnlock = [], animMaxed = []) {
   const panel = $('#panel-objects').empty();
   objControls = [];
   const t = state.objectTier;
+  const objMax = P.objectMaxLevel(t);
 
   const $set = $('<div class="tier current"></div>').appendTo(panel);
   $set.append(
@@ -233,60 +261,62 @@ function rebuildObjects() {
   const $list = $('<div class="objlist"></div>').appendTo($set);
 
   SHAPES.forEach((shape, idx) => {
-    // One row per object: its real art (a black silhouette while locked), the
-    // item name + level/durability, and the unlock/upgrade button. While locked
-    // (not yet bought) the item is a mystery: its name reads "Unknown" and the
-    // art is a black silhouette. Once an item is maxed the button is replaced by
-    // a blue (theme) checkmark.
-    const locked = state.objects[idx] === 0;
-    const displayName = locked ? 'Unknown' : objectItemName(t, idx);
-    const $row = $(`
-      <div class="obj-row">
-        <img class="obj-img" src="${objectImageUrl(t, idx)}" alt="${displayName}" />
-        <div class="info">
-          <div class="name">${displayName}</div>
-          <div class="lvl"></div>
-        </div>
-        <button class="buy"></button>
-        <span class="obj-check" title="Maxed out">✓</span>
-      </div>`).appendTo($list);
+    const lvl = state.objects[idx];
+    const unlocked = objectUnlocked(idx);
+    const isMaxed = lvl >= objMax;
+    const isGated = lvl === 0 && !unlocked;
+    const isBuyable = lvl === 0 && unlocked;
+    const justUnlocked = !!animUnlock[idx];
+    const name = objectItemName(t, idx);
+    const img = `<img class="obj-img" src="${objectImageUrl(t, idx)}" alt="${isGated ? '' : name}" />`;
 
-    // Cache the row's dynamic handles once — the per-frame refresh below must not
-    // re-run jQuery's .find() traversal on every tick.
+    let $row;
+    if (isGated) {
+      // Gated: previous relic not yet maxed. Silhouette + lock icon + caption.
+      // No name, no button — nothing the player can act on yet.
+      $row = $(
+        `<div class="obj-row gated">${img}` +
+          `<span class="lock-icon">${LOCK_SVG}</span>` +
+          `<div class="gate-msg">Max out previous relic</div></div>`
+      ).appendTo($list);
+      return; // gated rows have no live button -> no per-frame callback
+    }
+
+    if (isMaxed) {
+      // Maxed: all pips filled + a checkmark badge. `pop` (set only when this
+      // relic just hit the cap) drives the one-shot draw animation; otherwise
+      // the SVG renders fully-drawn and static.
+      $row = $(
+        `<div class="obj-row maxed">${img}` +
+          `<div class="info"><div class="name">${name}</div>` +
+          `<div class="lvl">${pips(objMax, objMax)}</div></div>` +
+          `<span class="obj-check${animMaxed[idx] ? ' pop' : ''}" title="Maxed out">${CHECK_SVG}</span></div>`
+      ).appendTo($list);
+      return; // maxed rows have no button
+    }
+
+    // Buyable (level 0, unlocked) or owned (levelling). Both have a live button
+    // whose disabled state tracks coins every frame.
+    const cost = isBuyable ? P.objectUnlockCost(t, idx) : P.objectUpgradeCost(t, idx, lvl);
+    const verb = isBuyable ? 'BUY' : 'Upgrade';
+    const sub = isBuyable
+      ? '<span class="muted-sub">Unlock this relic</span>'
+      : pips(lvl, objMax);
+    // A just-unlocked relic is built buyable but plays the lock shake -> unlock ->
+    // BUY-button-appears sequence (lock overlay self-removes via the keyframe).
+    const cls0 = `obj-row buyable${justUnlocked ? ' just-unlocked' : ''}`;
+    $row = $(
+      `<div class="${cls0}">${img}` +
+        (justUnlocked ? `<span class="lock-icon unlocking">${LOCK_SVG}</span>` : '') +
+        `<div class="info"><div class="name">${name}</div>` +
+        `<div class="lvl">${sub}</div></div>` +
+        `<button class="buy">${verb}<br><span class="cost">${fmt(cost)}</span></button></div>`
+    ).appendTo($list);
+
     const $btn = $row.find('button');
-    const $lvl = $row.find('.lvl');
     $btn.on('click', () => buyObject(idx));
-
-    objControls.push(() => {
-      const lvl = state.objects[idx];
-      const unlocked = objectUnlocked(idx);
-      // Locked objects (not yet bought) render as a black silhouette of the art.
-      cls($row, 'locked', lvl === 0);
-      // A maxed item shows the checkmark in place of the (now useless) button.
-      const objMax = P.objectMaxLevel(t);
-      const maxed = lvl >= objMax;
-      cls($row, 'maxed', maxed);
-      vis($btn, !maxed);
-
-      if (maxed) {
-        tx($lvl, `Lv ${lvl}/${objMax} · Maxed`);
-      } else if (lvl === 0 && !unlocked) {
-        // Gated: the previous item isn't maxed yet. Say so, instead of showing a
-        // buyable-looking Unlock+cost the player can't actually use.
-        tx($lvl, 'Locked');
-        htm($btn, 'Max out the<br>previous item'); dis($btn, true);
-      } else if (lvl === 0) {
-        const cost = P.objectUnlockCost(t, idx);
-        tx($lvl, 'Locked');
-        htm($btn, `Unlock<br><span class="cost">${fmt(cost)}</span>`);
-        dis($btn, state.coins < cost);
-      } else {
-        const cost = P.objectUpgradeCost(t, idx, lvl);
-        tx($lvl, `Lv ${lvl}/${objMax} · ${fmt(P.objectDurability(t, idx, lvl))} durability`);
-        htm($btn, `Upgrade<br><span class="cost">${fmt(cost)}</span>`);
-        dis($btn, state.coins < cost);
-      }
-    });
+    // Steady-state per-frame work: just the affordability toggle (diffed-write).
+    objControls.push(() => dis($btn, state.coins < cost));
   });
 
   nextTierButton(
@@ -322,9 +352,27 @@ function runRefresh() {
   refreshQueued = false;
   tx($coins, fmtCoins(state.coins));
   if (objectsStructureChanged()) {
+    // Detect which relics JUST transitioned, by diffing the PRE-rebuild snapshot
+    // (objSigTier/objSigLevels still hold last build's values) against live state
+    // BEFORE we overwrite it. Only animate within the same tier and after a real
+    // prior build — so initial load and tier-ups (objects reset to [1,0,0,0,0])
+    // never fire spurious animations.
+    const prevTier = objSigTier;
+    const prevLevels = objSigLevels;
+    const objMax = P.objectMaxLevel(state.objectTier);
+    const n = state.objects.length;
+    const animUnlock = new Array(n).fill(false);
+    const animMaxed = new Array(n).fill(false);
+    if (prevTier !== -1 && prevTier === state.objectTier && prevLevels.length === n) {
+      for (let i = 0; i < n; i++) {
+        if (prevLevels[i] < objMax && state.objects[i] >= objMax) animMaxed[i] = true;
+        if (i > 0 && state.objects[i] === 0 &&
+            prevLevels[i - 1] < objMax && state.objects[i - 1] >= objMax) animUnlock[i] = true;
+      }
+    }
     objSigTier = state.objectTier;
     objSigLevels = state.objects.slice(); // snapshot only on actual change (rare)
-    rebuildObjects();
+    rebuildObjects(animUnlock, animMaxed);
   }
   staticControls.forEach((fn) => fn());
   objControls.forEach((fn) => fn());
