@@ -27,6 +27,8 @@
             <b id="coins">0</b>
           </div>
           <aside id="upgrades">
+            <!-- Mobile-only grab/close handle for the bottom-sheet (hidden on desktop). -->
+            <div id="sheet-handle"></div>
             <nav id="tabs">
               <button data-tab="laser" class="active">Laser</button>
               <button data-tab="coins">Coins</button>
@@ -38,6 +40,10 @@
           </aside>
         </div>
       </div>
+      <!-- Mobile-only: bottom trigger bar that slides the upgrades sheet up, and
+           the dimming backdrop behind it. Both are display:none on desktop. -->
+      <button id="open-upgrades">Upgrades</button>
+      <div id="sheet-backdrop"></div>
     </div>
     <script type="module" src="/src/main.js"></script>
   </body>

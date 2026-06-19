@@ -20,7 +20,9 @@ export class Scene {
     this.dims = {
       width,
       height,
-      groundY: height - 48,
+      // Thin floor band: just enough to seat the vacuums/shard piles without
+      // eating vertical space (the old 48px strip read as wasted dead space).
+      groundY: height - 10,
       center: { x: width / 2, y: height * 0.6 },
     };
     this.container = new Container();

@@ -87,6 +87,10 @@ body {
   border: 1px solid var(--border);
   cursor: pointer;
   user-select: none;
+  /* Tap-heavy surface: kill the 300ms tap delay / double-tap zoom and the gray
+     tap-flash so rapid clicking feels immediate on touch. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 #lab canvas {
   display: block;
@@ -113,13 +117,13 @@ body {
   padding: 12px 16px;
 }
 #wallet-card .coin-icon {
-  height: 28px;
+  height: 22px;
   width: auto;
   filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
 }
 #wallet-card b {
   color: var(--gold);
-  font-size: 26px;
+  font-size: 20px;
   font-weight: 800;
   line-height: 1;
 }
@@ -131,6 +135,15 @@ body {
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
+}
+
+/* Mobile bottom-sheet chrome: the trigger bar, the grab/close handle and the
+   dimming backdrop only exist on narrow screens — hidden by default on desktop,
+   revealed inside the @media block below. */
+#open-upgrades,
+#sheet-handle,
+#sheet-backdrop {
+  display: none;
 }
 
 #tabs {
@@ -146,8 +159,10 @@ body {
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+  touch-action: manipulation;
 }
-#tabs button:hover {
+#tabs button:hover,
+#tabs button:active {
   color: var(--text);
 }
 #tabs button.active {
@@ -230,6 +245,7 @@ button.next-tier {
   letter-spacing: 0.5px;
   cursor: pointer;
   line-height: 1.35;
+  touch-action: manipulation;
 }
 button.next-tier small {
   font-weight: 500;
@@ -239,7 +255,8 @@ button.next-tier small {
 button.next-tier .cost {
   color: var(--gold);
 }
-button.next-tier:hover:not(:disabled) {
+button.next-tier:hover:not(:disabled),
+button.next-tier:active:not(:disabled) {
   border-color: var(--accent);
   background: rgba(108, 242, 255, 0.2);
 }
@@ -261,8 +278,10 @@ button.buy {
   font-weight: 700;
   font-size: 13px;
   cursor: pointer;
+  touch-action: manipulation;
 }
-button.buy:hover:not(:disabled) {
+button.buy:hover:not(:disabled),
+button.buy:active:not(:disabled) {
   border-color: var(--good);
 }
 button.buy:disabled {
@@ -557,7 +576,184 @@ button.buy .cost {
   font-weight: 700;
   font-size: 15px;
   cursor: pointer;
+  touch-action: manipulation;
 }
-.modal-backdrop button.collect:hover {
+.modal-backdrop button.collect:hover,
+.modal-backdrop button.collect:active {
   background: #2c4836;
+}
+
+/* ---------------------------------------------------------------------------
+   Narrow / vertical-mobile layout (phones down to iPhone SE ~320px).
+
+   The lab view fills the viewport WITHOUT page scroll: coins pinned to the top,
+   the canvas flex-fills the leftover height (img-like fit, so it shrinks to fit
+   both width and height while keeping its 480:680 ratio), durability below, and
+   an "Upgrades" bar at the bottom. The upgrade menu itself lives in a bottom
+   sheet that slides up over the lab on demand.
+
+   The Pixi renderer stays at its native 480x680 internal resolution — we only
+   resize the canvas's *display* box via CSS, so the GPU draws the same pixels,
+   all baked-in scene positions stay valid, and no game state is touched.
+   --------------------------------------------------------------------------- */
+@media (max-width: 760px) {
+  /* Bound the column to exactly the (dynamic) viewport height so the lab view
+     fits without page scroll: the canvas (the only flexible child) shrinks to
+     absorb the slack left by the coin bar, durability and the Upgrades bar. */
+  #game {
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+  #layout {
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+  /* Dissolve the side column so the wallet and the upgrades sheet become direct
+     children of #layout (no DOM move — selectors and diffed UI are untouched). */
+  #side-col {
+    display: contents;
+  }
+  #wallet-card {
+    order: -1; /* coins pinned to the very top, visible while playing */
+  }
+
+  /* Canvas + durability fill the space between the coin bar and the bottom bar. */
+  #lab-col {
+    order: 0;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #lab {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    border: none; /* the canvas keeps its own rounded corners */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* autoDensity sets width/height as inline styles, so override with !important.
+     auto width+height under max-width/height:100% scales the canvas to fit the
+     box on whichever axis binds, preserving the intrinsic aspect ratio. */
+  #lab canvas {
+    width: auto !important;
+    height: auto !important;
+    max-width: 100%;
+    max-height: 100%;
+  }
+  #durability {
+    width: 100%;
+  }
+
+  /* The "Upgrades" trigger: a full-width accent bar at the bottom of the lab. */
+  #open-upgrades {
+    display: block;
+    flex: 0 0 auto;
+    margin-top: 10px;
+    padding: 14px;
+    border-radius: 10px;
+    border: 1px solid var(--accent-border, rgba(108, 242, 255, 0.4));
+    background: rgba(108, 242, 255, 0.12);
+    color: var(--accent);
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  #open-upgrades:active {
+    background: rgba(108, 242, 255, 0.2);
+  }
+
+  /* The upgrade menu as a bottom sheet sliding up from the bottom edge. */
+  #upgrades {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    /* Fixed (large) height so the sheet doesn't jump when switching tabs: the
+       active panel flex-fills this height and just spans it when a tab has only
+       a couple of rows, instead of the sheet shrinking to fit the content. */
+    height: 85dvh;
+    display: flex;
+    flex-direction: column;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5);
+    transform: translateY(110%);
+    transition: transform 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+  #upgrades.open {
+    transform: translateY(0);
+  }
+  /* Grab/close handle at the top of the sheet. */
+  #sheet-handle {
+    display: block;
+    flex: 0 0 auto;
+    height: 22px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  #sheet-handle::before {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 4px;
+    margin: 9px auto;
+    border-radius: 2px;
+    background: var(--border);
+  }
+  /* The active panel scrolls inside the sheet rather than the whole page. */
+  .panel {
+    max-height: none;
+  }
+  .panel.active {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  /* Dimming backdrop behind the open sheet; tap to close. */
+  #sheet-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: rgba(5, 7, 12, 0.6);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+  #sheet-backdrop.show {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* Tightest widths (older iPhone SE ~320px): shrink the relic-row art and gaps
+   so the image + name + BUY button fit without crushing the button. */
+@media (max-width: 380px) {
+  .obj-row {
+    gap: 8px;
+    padding: 8px 10px;
+  }
+  .obj-row .obj-img,
+  .obj-row .obj-check {
+    width: 44px;
+  }
+  .obj-row .obj-img {
+    height: 44px;
+  }
+  /* Keep the gated/unlocking lock centred over the now-smaller art. */
+  .obj-row.gated .lock-icon,
+  .obj-row.just-unlocked .lock-icon.unlocking {
+    left: 21px;
+  }
 }

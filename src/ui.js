@@ -416,6 +416,22 @@ export function initUI() {
   $('#tabs button').on('click', function () {
     showTab($(this).data('tab'));
   });
+
+  // Mobile bottom-sheet: the "Upgrades" bar slides the menu up; the grab-handle
+  // or a tap on the dimming backdrop slides it back down. (On desktop these
+  // elements are display:none and the sheet styling never applies.)
+  const $sheet = $('#upgrades');
+  const $backdrop = $('#sheet-backdrop');
+  const closeSheet = () => {
+    $sheet.removeClass('open');
+    $backdrop.removeClass('show');
+  };
+  $('#open-upgrades').on('click', () => {
+    $sheet.addClass('open');
+    $backdrop.addClass('show');
+  });
+  $('#sheet-handle, #sheet-backdrop').on('click', closeSheet);
+
   onChange(refresh);
   runRefresh(); // initial synchronous paint (don't wait a frame for first render)
   showTab('laser');
