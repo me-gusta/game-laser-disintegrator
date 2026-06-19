@@ -9,7 +9,9 @@
 import { Texture } from '@pixi/core';
 import { TIER_COUNT } from '../progression.js';
 
-const BASE = '/images';
+// Relative (no leading slash) so it resolves against the game's index.html on
+// CrazyGames' CDN sub-path rather than the CDN root. Absolute paths 404 there.
+const BASE = 'images';
 const pad2 = (n) => String(n).padStart(2, '0');
 
 // The lab backdrop the whole scene sits in.

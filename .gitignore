@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Source art (originals) — optimized webp under public/images is what ships
+art_src

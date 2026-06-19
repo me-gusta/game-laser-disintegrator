@@ -13,7 +13,9 @@
 // ---------------------------------------------------------------------------
 import { Howl, Howler } from 'howler';
 
-const FX = '/sound_fx';
+// Relative (no leading slash): CrazyGames serves the game from a CDN sub-path,
+// where an absolute `/sound_fx/...` would resolve to the CDN root and 404.
+const FX = 'sound_fx';
 const LS_KEY = 'laserDisintegrator/audio/v1';
 
 // Restore the saved toggles. Either toggle defaults ON (only an explicit `false`
@@ -51,7 +53,7 @@ class AudioManager {
       deny: new Howl({ src: [`${FX}/deny.mp3`], volume: 0.4 }),
       tierUp: new Howl({ src: [`${FX}/tier-up.mp3`], volume: 0.6 }),
     };
-    this.music = new Howl({ src: ['/bg_music.mp3'], loop: true, volume: 0.22, html5: true });
+    this.music = new Howl({ src: ['bg_music.mp3'], loop: true, volume: 0.22, html5: true });
   }
 
   // Wire the one-time unlock gesture and the tab-hidden music pause. Call once on
@@ -68,6 +70,20 @@ class AudioManager {
       if (document.visibilityState === 'hidden') this.music.pause();
       else if (this.ready && this.settings.music) this._playMusic();
     });
+    // iOS puts the AudioContext into an "interrupted"/"suspended" state when the
+    // app is backgrounded or interrupted (calls, Siri), and WebKit will ONLY let
+    // us revive it from inside a real user gesture — the visibilitychange above
+    // is too late on iOS. So resume on every touchend/click while suspended, per
+    // the CrazyGames mobile-audio requirement. Not `once`: an interruption can
+    // happen any number of times in a session.
+    const resumeOnGesture = () => {
+      if (Howler.ctx && Howler.ctx.state !== 'running') {
+        Howler.ctx.resume();
+        if (this.ready && this.settings.music) this._playMusic();
+      }
+    };
+    document.addEventListener('touchend', resumeOnGesture);
+    document.addEventListener('click', resumeOnGesture);
   }
 
   _unlock() {

@@ -23,6 +23,10 @@ body {
      (and stray text selection while rapidly tapping looks broken). */
   user-select: none;
   -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  /* iOS: also suppress the long-press callout/contextual menu on the game. */
+  -webkit-touch-callout: none;
 }
 
 #game {

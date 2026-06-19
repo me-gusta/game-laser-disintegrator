@@ -65,6 +65,38 @@ renderer.view.addEventListener('pointerdown', (e) => {
   scene.click(x, y);
 });
 
+// CrazyGames "common fixes": tame default browser behaviour that fights a
+// full-window game inside their iframe. Adapted for a DOM+canvas game (we are
+// not Unity), so each guard makes an exception for the parts of the UI that
+// legitimately need the default:
+//   - wheel: stop the PAGE from scrolling, but let the upgrade panels and the
+//     collection modal (the only scroll containers) scroll as normal.
+//   - keydown: stop Arrow/Space from scrolling the page, but never swallow keys
+//     aimed at an interactive control (settings checkbox, buttons, links) so they
+//     stay keyboard-usable.
+//   - contextmenu: suppress the right-click / long-press menu over the game.
+// (The doc's Samsung-webview visibilitychange snippet is Unity-specific —
+//  `application.publishEvent('OnWebDocumentPause', …)` — and N/A here; our own
+//  visibilitychange handlers in main.js / audio.js already cover music
+//  pause/resume and offline-credit on return.)
+window.addEventListener(
+  'wheel',
+  (e) => {
+    const el = e.target;
+    if (!(el instanceof Element) || !el.closest('.panel, .cm-scroll')) e.preventDefault();
+  },
+  { passive: false }
+);
+window.addEventListener('keydown', (e) => {
+  const t = e.target;
+  const tag = t && t.tagName;
+  // Let controls handle their own keys (Space toggles the settings checkbox /
+  // activates a focused button, etc.).
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON' || tag === 'SELECT' || tag === 'A' || (t && t.isContentEditable)) return;
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === ' ') e.preventDefault();
+});
+document.addEventListener('contextmenu', (e) => e.preventDefault());
+
 // Brand-new player (no save at all): seed the starter relic into the collection
 // log and let the onboarding hints play. Returning players are gated out by the
 // persisted tutorial flags (see persistence.loadGame).
