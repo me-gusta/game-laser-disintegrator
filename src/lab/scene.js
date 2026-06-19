@@ -11,6 +11,7 @@ import { Laser } from './laser.js';
 import { Target } from './target.js';
 import { Shards } from './shards.js';
 import { Floaters } from './floaters.js';
+import { Effects } from './effects.js';
 
 const SNAP_THRESHOLDS = [0.72, 0.46, 0.22]; // 3 destruction tiers
 
@@ -54,6 +55,7 @@ export class Scene {
     this.laser = new Laser(this.dims);
     this.target = new Target(this.dims, renderer);
     this.floaters = new Floaters();
+    this.effects = new Effects(this.dims);
     // Each shard the vacuum collects pays out coins and pops a dark-yellow "+N"
     // coin number at the shard's spot (same float/fade as damage numbers).
     this.shards = new Shards(this.dims, (worth, x, y) => {
@@ -70,8 +72,16 @@ export class Scene {
       this.laser.container,
       this.target.container,
       this.laser.impact,
-      this.floaters.container
+      this.floaters.container,
+      this.effects.container // blooms / rings / tier-up wash sit on top of all
     );
+
+    // Optional hooks the host (main.js) wires to drive DOM-side reactions — the
+    // durability bar flash on snaps/shatter and the tier-up banner. Left null
+    // when nobody is listening.
+    this.onSnap = null; //        (snapIndex) => void  — a destruction threshold crossed
+    this.onShatter = null; //     ()           => void  — the object was destroyed
+    this.onLaserTierUp = null; // (tier)       => void  — laser colour tier advanced
 
     // Tracks laser stats so we only rebuild beams on change. Kept as four numbers
     // (compared field-by-field in update) rather than a joined string, so the
@@ -83,11 +93,21 @@ export class Scene {
     this.alive = false;
     this.respawnTimer = 0;
     this._laserAccum = 0; // laser damage accumulated between floating-number pops
+    this._vacRate = 0; //   cached vacuum shards/sec; refreshed when vacuumTier changes
+    this.throttled = false; // vacuum can't keep up with shard production (see update)
     this.spawnNext();
   }
 
   currentWorth() {
     return P.shardValue(state.shardLevel) * P.objectReward(this.cur.tier, this.cur.idx, this.cur.level);
+  }
+
+  // Estimated total coin payout for the current object once fully disintegrated:
+  // its per-shard worth times its total shard budget (snaps + shatter), nudged by
+  // the mean shard-size multiplier. Shown as a "bounty" so each kill has a prize.
+  currentBounty() {
+    const totalShards = this.snapShards * 3 + this.shatterShards;
+    return this.currentWorth() * totalShards * 1.1;
   }
 
   // Spawn the next object: a progressive-random pick from the current tier.
@@ -112,7 +132,7 @@ export class Scene {
   // A screen click -> burst of click damage with an immediate floating number.
   // The number erupts from the hole the bite just opened (near its rim), falling
   // back to the object's top while the object is still pristine and hole-less.
-  click() {
+  click(px, py) {
     if (!this.alive) return;
     const d = P.clickDamage(state.clickLevel, state.objectTier);
     this.damage(d);
@@ -120,6 +140,15 @@ export class Scene {
     const h = this.target.lastHole;
     if (h) this.floaters.pop(d, h.x, h.y, c);
     else this.floaters.pop(d, this.target.container.x, this.target.container.y - 10, c);
+    // Chunky tap feedback: a ripple at the pointer, a recoil of the object away
+    // from the hit, and a brief punch on the beam/impact flare. `px,py` are in
+    // lab space (main.js converts from the canvas); fall back to the object centre
+    // for non-pointer calls.
+    const hx = px == null ? this.target.container.x : px;
+    const hy = py == null ? this.target.container.y : py;
+    this.effects.shockwave(hx, hy, c, 34, 260);
+    this.target.kick(hx, hy, 9);
+    this.laser.pulse(0.5);
   }
 
   damage(amount) {
@@ -130,6 +159,12 @@ export class Scene {
     while (this.snaps < 3 && this.dur <= this.maxDur * SNAP_THRESHOLDS[this.snaps]) {
       const p = this.target.addDestruction(this.snaps + 1);
       this.shards.burst(p.x, p.y, this.snapShards, this.target.color, this.currentWorth());
+      // A small punch on each snap — a light shake/ring/beam pulse — well below
+      // the shatter so the kill still reads as the bigger event.
+      this.effects.shake(Math.min(6, 2.5 + this.cur.tier * 0.5), 140);
+      this.effects.shockwave(p.x, p.y, this.target.color, 52, 300);
+      this.laser.pulse(0.5);
+      if (this.onSnap) this.onSnap(this.snaps);
       this.snaps++;
     }
     if (this.dur <= 0) this.shatter();
@@ -139,8 +174,17 @@ export class Scene {
     this.alive = false;
     const c = this.target.container;
     this.shards.burst(c.x, c.y, this.shatterShards, this.target.color, this.currentWorth(), true);
+    // Make the kill LAND: a white bloom + shockwave ring from the object's centre,
+    // a screen shake scaled by tier (late-tier kills feel heavier), and a bright
+    // beam after-glow punch right before the laser powers down.
+    const tier = this.cur.tier;
+    this.effects.flash(c.x, c.y, 0xffffff, 150, 320);
+    this.effects.shockwave(c.x, c.y, this.target.color, 200, 520);
+    this.effects.shake(Math.min(16, 7 + tier * 1.2), 200);
+    this.laser.pulse(1.6);
     this.target.container.alpha = 0;
     this.respawnTimer = 800; // breathe between kills so each shatter lands
+    if (this.onShatter) this.onShatter();
   }
 
   update(deltaMS) {
@@ -157,6 +201,8 @@ export class Scene {
       state.laserThickness !== ll.thickness ||
       state.laserBeams !== ll.beams
     ) {
+      const wasInit = ll.tier === -1; // first build: sync visuals but don't celebrate
+      const prevTier = ll.tier;
       ll.tier = state.laserTier;
       ll.power = state.laserPower;
       ll.thickness = state.laserThickness;
@@ -165,6 +211,23 @@ export class Scene {
       // DPS only moves when a stat changes, so cache it here instead of running
       // four Math.pow()s every frame in the damage step below.
       this._dps = P.laserDps(state.laserTier, state.laserPower, state.laserThickness, state.laserBeams);
+
+      if (!wasInit) {
+        if (state.laserTier > prevTier) {
+          // Tier crossing — the earned milestone. Overcharged first shot, a
+          // colour wash of the new laser across the lab, a bloom + heavy shake,
+          // and a hook for the DOM "TIER UP" banner.
+          this.laser.flourish();
+          this.effects.tierWash(P.LASER_TIER_COLORS[state.laserTier]);
+          this.effects.flash(this.target.container.x, this.target.container.y, 0xffffff, 190, 460);
+          this.effects.shake(12, 380);
+          if (this.onLaserTierUp) this.onLaserTierUp(state.laserTier);
+        } else {
+          // A within-tier upgrade (power/thickness/beams) — punctuate the change
+          // with a one-beat beam flash so the buy reads on screen.
+          this.laser.pulse(0.8);
+        }
+      }
     }
 
     this.target.update(dt);
@@ -206,8 +269,29 @@ export class Scene {
     if (state.vacuumTier !== this._vacTier) {
       this._vacTier = state.vacuumTier;
       this.shards.setVacuums(P.vacuumCleaners(state.vacuumTier));
+      // Cache the collection rate so the per-frame throttle check below doesn't
+      // re-walk (and re-allocate) the cleaner list every frame.
+      this._vacRate = P.vacuumTotalRate(state.vacuumTier);
     }
+
+    // Vacuum bottleneck: compare the shards the current object produces per second
+    // (its budget over one kill+respawn cycle) against what the vacuum can collect.
+    // When production outruns collection, signal it on the cleaners (P2.4).
+    const totalShards = this.snapShards * 3 + this.shatterShards;
+    const cycle = this._dps > 0 ? this.maxDur / this._dps + 0.8 : Infinity;
+    const prodRate = isFinite(cycle) && cycle > 0 ? totalShards / cycle : 0;
+    const throttled = this._vacRate > 0 && prodRate > this._vacRate * 1.05;
+    if (throttled !== this.throttled) {
+      this.throttled = throttled;
+      this.shards.setThrottled(throttled);
+    }
+
     this.shards.update(dt);
     this.floaters.update(dt);
+
+    // Advance the juice layer and apply the decaying screen-shake offset to the
+    // whole scene (small magnitudes, so the bared dark edge never reads).
+    this.effects.update(dt);
+    this.container.position.set(this.effects.offset.x, this.effects.offset.y);
   }
 }

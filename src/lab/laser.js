@@ -60,6 +60,23 @@ export class Laser {
     //                            (geometry is only rebuilt when the terminus moves)
     this.fire = 1; // firing intensity 0..1; eased toward 1 while an object is present,
     //               toward 0 when there's nothing to disintegrate (gun powers down).
+    // Transient "punch" added on top of the steady fire — spiked by snaps, kills,
+    // upgrades and tier crossings, then eased back to 0. Boosts the beam glow,
+    // brightness and the impact-flare bloom for a beat of after-glow.
+    this._pulse = 0;
+  }
+
+  // Punch the beam brighter for a beat (snaps, clicks, stat upgrades, the kill).
+  // `v` stacks onto any pulse still ringing down so back-to-back hits build up.
+  pulse(v = 0.6) {
+    this._pulse = Math.min(2.6, Math.max(this._pulse, v));
+  }
+
+  // Tier-crossing flourish: an overcharged first shot. Snap the firing intensity
+  // straight to full (no slow power-up) and stack a big, slow-fading pulse.
+  flourish() {
+    this.fire = 1;
+    this.pulse(2.4);
   }
 
   // Rebuild the static parts (emitter sprite, lenses, beam graphics) for a new
@@ -207,6 +224,12 @@ export class Laser {
     if (this.fire < 0.001) this.fire = 0;
     const f = this.fire;
 
+    // Ease the transient punch back to 0 (~220ms). `p` is then folded into the
+    // beam alpha, group glow and impact-flare size/alpha below.
+    this._pulse += (0 - this._pulse) * Math.min(1, deltaMS / 220);
+    if (this._pulse < 0.002) this._pulse = 0;
+    const p = this._pulse;
+
     const flicker = 0.85 + 0.15 * Math.sin(this.time * 0.02);
     if (this.beams) {
       // Rebuild geometry only when the terminus actually moved (the object bobs
@@ -215,7 +238,7 @@ export class Laser {
       // exact product s.intensity * flicker * fire as before, but with the
       // intensity baked into the geometry's fill alpha by drawBeams().
       if (Math.abs(this.targetY - this._drawnBottom) > 1) this.drawBeams();
-      const beamAlpha = flicker * f;
+      const beamAlpha = Math.min(1, flicker * f * (1 + p * 0.5));
       for (const g of this.beams) g.alpha = beamAlpha;
     }
 
@@ -229,7 +252,7 @@ export class Laser {
       if (this.beamLayer.filters) this.beamLayer.filters = null;
     } else {
       if (!this.beamLayer.filters) this.beamLayer.filters = [this.glow];
-      if (this.visual) this.glow.outerStrength = this.visual.glow * f;
+      if (this.visual) this.glow.outerStrength = this.visual.glow * f * (1 + p * 1.2);
     }
     this.lens.alpha = f * (0.75 + 0.25 * Math.sin(this.time * 0.04));
 
@@ -246,8 +269,8 @@ export class Laser {
     // with the beam when there's nothing to hit.
     this.impact.position.set(this.cx, contactY);
     const pulse = 1 + 0.16 * Math.sin(this.time * 0.03);
-    this.flareG.scale.set(pulse * flicker * f);
-    this.flareG.alpha = f * (0.8 + 0.2 * Math.sin(this.time * 0.05));
+    this.flareG.scale.set(pulse * flicker * f * (1 + p * 0.7));
+    this.flareG.alpha = Math.min(1, f * (0.8 + 0.2 * Math.sin(this.time * 0.05)) * (1 + p * 0.6));
     this.flareG.rotation += deltaMS * 0.003;
   }
 }

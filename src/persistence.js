@@ -30,6 +30,8 @@ const SAVE_KEYS = [
   'vacuumTier',
   'objectTier',
   'objects',
+  'collection',
+  'tutorialStep',
 ];
 
 export function saveGame() {
@@ -73,9 +75,26 @@ export function loadGame() {
           if (typeof v[i] === 'number') state.objects[i] = v[i];
         }
       }
+    } else if (k === 'collection') {
+      // Array of { tier, idx, cps } — keep only well-formed entries.
+      if (Array.isArray(v)) {
+        state.collection = v.filter(
+          (e) =>
+            e &&
+            Number.isFinite(e.tier) &&
+            Number.isFinite(e.idx) &&
+            Number.isFinite(e.cps)
+        );
+      }
     } else if (typeof v === 'number' && Number.isFinite(v)) {
       state[k] = v;
     }
+  }
+
+  // Legacy saves (written before onboarding existed) carry no tutorial progress —
+  // those players are clearly not new, so mark the tutorial done (step 3).
+  if (!('tutorialStep' in data)) {
+    state.tutorialStep = 3;
   }
 
   return { savedAt: typeof data.savedAt === 'number' ? data.savedAt : null };

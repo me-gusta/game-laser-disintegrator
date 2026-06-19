@@ -11,7 +11,7 @@
       <div id="layout">
         <div id="lab-col">
           <div id="lab">
-            <!-- pixi canvas mounts here -->
+            <!-- pixi canvas mounts here; the onboarding badge is created in JS -->
           </div>
           <div id="durability">
             <div class="dur-head">
@@ -19,12 +19,17 @@
               <span id="dur-text">—</span>
             </div>
             <div class="dur-bar"><div id="dur-fill"></div></div>
+            <div class="dur-reward">Reward <b id="reward-val">—</b></div>
           </div>
         </div>
         <div id="side-col">
           <div id="wallet-card">
-            <img class="coin-icon" src="/images/coin.png" alt="coins" />
-            <b id="coins">0</b>
+            <!-- Calm secondary "rate to grow" readout; hidden until income > 0. -->
+            <span id="cps" class="cps" hidden></span>
+            <span class="wallet-coins">
+              <img class="coin-icon" src="/images/coin.png" alt="coins" />
+              <b id="coins">0</b>
+            </span>
           </div>
           <aside id="upgrades">
             <!-- Mobile-only grab/close handle for the bottom-sheet (hidden on desktop). -->

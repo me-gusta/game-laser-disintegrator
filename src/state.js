@@ -36,6 +36,15 @@ export const state = {
   // maxed. Maxing the whole set unlocks the next tier (same set, new colour).
   objectTier: 0,
   objects: [1, 0, 0, 0, 0], // level per shape index
+  // Collection log: one entry per relic the moment it is first unlocked, stamping
+  // the live passive coins/sec at that time. Past tiers reset the object grid, so
+  // this is the only lasting record of what's been completed (see the Collection
+  // modal in ui.js). Entries: { tier, idx, cps }.
+  collection: [],
+  // First-run onboarding progress (persisted, shown to genuinely new players only).
+  // A single moving badge walks the player through: 0 = destroy your first object,
+  // 1 = buy a click upgrade, 2 = find the relics' NEXT TIER, 3 = done. See ui.js.
+  tutorialStep: 0,
   _subs: [],
 };
 
@@ -51,6 +60,14 @@ function spend(cost) {
   if (state.coins < cost) return false;
   state.coins -= cost;
   return true;
+}
+
+// Log a relic the first time it is unlocked, stamping the current passive
+// coins/sec. Idempotent per (tier, idx) so repeated calls never duplicate.
+// Exported so a fresh game can seed its starter relic (see main.js).
+export function recordUnlock(tier, idx) {
+  if (state.collection.some((e) => e.tier === tier && e.idx === idx)) return;
+  state.collection.push({ tier, idx, cps: P.passiveCoinsPerSecond(state) });
 }
 
 // --- earning ---------------------------------------------------------------
@@ -124,6 +141,7 @@ export function buyObject(idx) {
     if (!spend(P.objectUpgradeCost(state.objectTier, idx, level))) return false;
   }
   state.objects[idx]++;
+  if (level === 0) recordUnlock(state.objectTier, idx); // freshly unlocked relic
   notify();
   return true;
 }
@@ -138,6 +156,7 @@ export function buyObjectNextTier() {
   if (!spend(P.objectNextTierCost(state.objectTier))) return false;
   state.objectTier++;
   state.objects = [1, 0, 0, 0, 0]; // same shapes, fresh at the new colour tier
+  recordUnlock(state.objectTier, 0); // the auto-unlocked first relic of the new tier
   notify();
   return true;
 }
@@ -184,6 +203,8 @@ export function resetState() {
   state.vacuumTier = 0;
   state.objectTier = 0;
   state.objects = [1, 0, 0, 0, 0];
+  state.collection = [];
+  state.tutorialStep = 0;
   notify();
 }
 

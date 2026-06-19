@@ -6,6 +6,8 @@
 // collected shard pays out coins.
 import { Container } from '@pixi/display';
 import { Sprite } from '@pixi/sprite';
+import { Text } from '@pixi/text';
+import { GlowFilter } from '@pixi/filter-glow';
 import { VACUUM_TEX, SHARD, whenReady } from './assets.js';
 
 const GRAVITY = 0.0011; // px / ms^2
@@ -49,6 +51,53 @@ export class Shards {
     // nothing. Ping-ponged between the candidate-narrowing passes.
     this._bufA = [];
     this._bufB = [];
+
+    // Bottleneck signal: when the scene reports the vacuum can't keep up with
+    // shard production, each cleaner glows a rapid red and wears a "!" so the
+    // player can see income is being throttled (and that Vacuum is the fix).
+    this.time = 0;
+    this.throttled = false;
+  }
+
+  // Toggle the over-capacity warning (driven by the scene's throttle model).
+  setThrottled(on) {
+    this.throttled = on;
+  }
+
+  // Lazily build a cleaner's red over-capacity glow filter + floating "!" badge.
+  _ensureWarn(v) {
+    if (v.warn) return;
+    const t = new Text('!', {
+      fontFamily: 'Impact, "Arial Black", sans-serif',
+      fontSize: 26,
+      fontWeight: 'bold',
+      fill: 0xff4040,
+      stroke: 0x000000,
+      strokeThickness: 4,
+    });
+    t.anchor.set(0.5, 1);
+    t.visible = false;
+    this.container.addChild(t);
+    v.warn = t;
+    v.glow = new GlowFilter({ distance: 16, outerStrength: 0, innerStrength: 0, color: 0xff2a2a, quality: 0.25 });
+  }
+
+  // Per-frame warning state for one cleaner: attach/strip the red glow and show
+  // or hide its "!" badge above the sprite, pulsing both rapidly while throttled.
+  _updateWarning(v) {
+    if (this.throttled) {
+      this._ensureWarn(v);
+      if (!v.g.filters) v.g.filters = [v.glow];
+      const p = 0.5 + 0.5 * Math.sin(this.time * 0.02); // ~fast pulse
+      v.glow.outerStrength = 1.5 + 3.5 * p;
+      v.warn.visible = v.g.visible;
+      v.warn.x = v.g.x;
+      v.warn.y = v.g.y - (v.g.height || 30) - 4;
+      v.warn.alpha = 0.6 + 0.4 * p;
+    } else {
+      if (v.warn) v.warn.visible = false;
+      if (v.g.filters) v.g.filters = null;
+    }
   }
 
   // Build a vacuum-cleaner sprite for cleaner index `i` (its own artwork). The
@@ -90,6 +139,7 @@ export class Shards {
     while (this.vacuums.length > configs.length) {
       const v = this.vacuums.pop();
       this.container.removeChild(v.g);
+      if (v.warn) this.container.removeChild(v.warn);
     }
     for (let i = 0; i < this.vacuums.length; i++) {
       const v = this.vacuums[i];
@@ -210,6 +260,7 @@ export class Shards {
 
   update(deltaMS) {
     const { width, groundY } = this.dims;
+    this.time += deltaMS;
     for (const s of this.shards) {
       if (s.resting) continue;
       s.vy += GRAVITY * deltaMS;
@@ -264,6 +315,10 @@ export class Shards {
     }
 
     for (const v of this.vacuums) this.updateVacuum(v, deltaMS);
+    // Over-capacity warning runs after movement so the "!" badge tracks the
+    // cleaner's current position (updateVacuum has several early returns, so the
+    // warning is updated here rather than threaded through each branch).
+    for (const v of this.vacuums) this._updateWarning(v);
   }
 
   // Pick a new pile for cleaner `v` to wander toward: a random non-empty column,

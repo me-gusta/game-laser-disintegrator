@@ -27,7 +27,12 @@ export class Target {
     this.renderer = renderer;
     this.container = new Container();
     this.container.x = dims.center.x;
+    this.baseX = dims.center.x;
     this.baseY = dims.center.y;
+    // Click recoil: a small offset kicked away from the hit point, eased back to
+    // rest each frame so taps visibly "connect" with the object.
+    this.recoilX = 0;
+    this.recoilY = 0;
 
     // Shows the (progressively eroded) RenderTexture.
     this.sprite = new Sprite(Texture.EMPTY);
@@ -177,10 +182,31 @@ export class Target {
     return this.lastHole;
   }
 
+  // Shove the object a few px away from a hit at (fromX, fromY) — a quick recoil
+  // that update() eases back. Clamped so rapid tapping can't fling it off-centre.
+  kick(fromX, fromY, mag = 9) {
+    const dx = this.container.x - fromX;
+    const dy = this.container.y - fromY;
+    const len = Math.hypot(dx, dy) || 1;
+    this.recoilX += (dx / len) * mag;
+    this.recoilY += (dy / len) * mag;
+    const m = Math.hypot(this.recoilX, this.recoilY);
+    const max = 16;
+    if (m > max) {
+      this.recoilX *= max / m;
+      this.recoilY *= max / m;
+    }
+  }
+
   update(deltaMS) {
     // Gentle hover.
     this.bob += deltaMS * 0.003;
-    this.container.y = this.baseY + Math.sin(this.bob) * 6;
+    // Ease the click recoil back to rest (~90ms time constant).
+    const k = Math.min(1, deltaMS / 90);
+    this.recoilX += (0 - this.recoilX) * k;
+    this.recoilY += (0 - this.recoilY) * k;
+    this.container.x = this.baseX + this.recoilX;
+    this.container.y = this.baseY + Math.sin(this.bob) * 6 + this.recoilY;
   }
 
   topY() {
