@@ -13,8 +13,14 @@ import { state, addCoins, devNextLaserTier, devNextObjectTier, resetState, recor
 import { fmt, fmtCoins } from './format.js';
 import { passiveCoinsPerSecond, offlineCoins, LASER_TIER_NAMES, LASER_TIER_COLORS } from './progression.js';
 import { loadGame, saveGame, clearSave, installAutosave } from './persistence.js';
+import { audio } from './audio.js';
 
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+
+// Install the audio system's unlock-on-first-gesture + tab-hidden handlers. The
+// scene drives the gameplay sounds (hum/snaps/shatter/coins/tier-up); the UI
+// drives buy/deny and the settings toggles.
+audio.init();
 
 // Restore any saved game BEFORE the scene/UI read state, so they build from the
 // player's real progress. `loaded.savedAt` tells us how long they were away.

@@ -12,6 +12,7 @@ import { Target } from './target.js';
 import { Shards } from './shards.js';
 import { Floaters } from './floaters.js';
 import { Effects } from './effects.js';
+import { audio } from '../audio.js';
 
 const SNAP_THRESHOLDS = [0.72, 0.46, 0.22]; // 3 destruction tiers
 
@@ -61,6 +62,7 @@ export class Scene {
     this.shards = new Shards(this.dims, (worth, x, y) => {
       addCoins(worth);
       this.floaters.popCoin(worth, x, y);
+      audio.coin();
     });
 
     // Z-order: beams (laser.container) sit BEHIND the target so the object
@@ -133,6 +135,7 @@ export class Scene {
   // The number erupts from the hole the bite just opened (near its rim), falling
   // back to the object's top while the object is still pristine and hole-less.
   click(px, py) {
+    audio.hit(); // tap feedback on every lab press, object or not
     if (!this.alive) return;
     const d = P.clickDamage(state.clickLevel, state.objectTier);
     this.damage(d);
@@ -164,6 +167,7 @@ export class Scene {
       this.effects.shake(Math.min(6, 2.5 + this.cur.tier * 0.5), 140);
       this.effects.shockwave(p.x, p.y, this.target.color, 52, 300);
       this.laser.pulse(0.5);
+      audio.snap(this.snaps);
       if (this.onSnap) this.onSnap(this.snaps);
       this.snaps++;
     }
@@ -182,6 +186,7 @@ export class Scene {
     this.effects.shockwave(c.x, c.y, this.target.color, 200, 520);
     this.effects.shake(Math.min(16, 7 + tier * 1.2), 200);
     this.laser.pulse(1.6);
+    audio.shatter();
     this.target.container.alpha = 0;
     this.respawnTimer = 800; // breathe between kills so each shatter lands
     if (this.onShatter) this.onShatter();
@@ -234,6 +239,7 @@ export class Scene {
           this.effects.tierWash(P.LASER_TIER_COLORS[state.laserTier]);
           this.effects.flash(this.target.container.x, this.target.container.y, 0xffffff, 190, 460);
           this.effects.shake(12, 380);
+          audio.tierUp();
           if (this.onLaserTierUp) this.onLaserTierUp(state.laserTier);
         } else {
           // A within-tier upgrade (power/thickness/beams) — punctuate the change

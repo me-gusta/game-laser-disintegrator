@@ -6,6 +6,7 @@ import * as P from './progression.js';
 import { fmt, fmtCoins, fmtDuration } from './format.js';
 import { objectImageUrl, objectSetName, objectItemName } from './lab/assets.js';
 import { saveGame } from './persistence.js';
+import { audio } from './audio.js';
 import {
   state,
   onChange,
@@ -40,6 +41,14 @@ const CHECK_SVG =
   'stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">' +
   '<circle class="check-ring" cx="18" cy="18" r="15"/>' +
   '<path class="check-mark" d="M11 18.5 L16 23.5 L26 12.5"/></svg>';
+
+// Settings gear (top-left of the lab). A plain cog outline — SVG only, no emoji
+// (per the project's UI rule). Strokes use currentColor so CSS themes it on hover.
+const GEAR_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+  'stroke-linecap="round" stroke-linejoin="round">' +
+  '<circle cx="12" cy="12" r="3"/>' +
+  '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V2a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H22a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
 
 // Small coin chip stamped beside a price on every buy/upgrade button (and the
 // wallet's coins/sec headline) so a number always reads as "coins", not a bare
@@ -137,6 +146,7 @@ function setBuyDisabled($btn, disabled) {
 // failed/unaffordable click.
 function confirmBuy(els, ok) {
   if (!ok) return;
+  audio.buy();
   squash(els.btn[0]);
   flashRow(els.row[0]);
   if (els.laser) pulseEl($laserHead && $laserHead[0]);
@@ -178,7 +188,7 @@ function upgradeRow(panel, build) {
 //   cost(), nextName(), buy()
 function nextTierButton(panel, build, controls) {
   const $btn = $('<button class="next-tier"></button>').appendTo(panel);
-  $btn.on('click', () => build.buy());
+  $btn.on('click', () => { if (build.buy()) audio.buy(); });
   controls.push(() => {
     if (build.maxedTier()) {
       htm($btn, 'Tier maxed'); dis($btn, true);
@@ -459,7 +469,7 @@ function rebuildObjects(animUnlock = [], animMaxed = []) {
     const $cost = $btn.find('.cost-n');
     const $lvl = $row.find('.lvl');
     $btn.on('click', () => {
-      if (buyObject(idx)) squash($btn[0]);
+      if (buyObject(idx)) { audio.buy(); squash($btn[0]); }
     });
     // Per-frame, all diffed (steady frames write nothing): verb (BUY/Upgrade),
     // cost, pip fill and affordability — recomputed from the live level so an
@@ -534,6 +544,41 @@ function showCollection() {
 
   const close = () => $modal.remove();
   $modal.find('.close').on('click', close);
+  $modal.on('click', (e) => {
+    if (e.target === $modal[0]) close();
+  });
+}
+
+// ---------------------------- Settings modal -------------------------------
+// Music + sound toggles with a Save button, opened by the gear button over the
+// lab. Toggles apply LIVE (you hear the change in the panel); persistence to
+// localStorage happens on Save — and also on a backdrop dismiss, so a previewed
+// change is never silently lost.
+function showSettings() {
+  $('#settings-modal').remove(); // never stack two
+
+  const row = (id, label, on) =>
+    `<label class="set-row"><span>${label}</span>` +
+    `<span class="switch"><input type="checkbox" id="${id}"${on ? ' checked' : ''}>` +
+    `<span class="track"></span></span></label>`;
+
+  const $modal = $(
+    `<div id="settings-modal" class="modal-backdrop">` +
+      `<div class="modal settings-modal">` +
+      `<h2>Settings</h2>` +
+      row('set-music', 'Music', audio.settings.music) +
+      row('set-sound', 'Sound', audio.settings.sound) +
+      `<button class="collect save">Save</button>` +
+      `</div></div>`
+  ).appendTo('body');
+
+  const $music = $modal.find('#set-music');
+  const $sound = $modal.find('#set-sound');
+  $music.on('change', () => audio.setMusic($music.is(':checked')));
+  $sound.on('change', () => audio.setSound($sound.is(':checked')));
+
+  const close = () => { audio.save(); $modal.remove(); };
+  $modal.find('.save').on('click', close);
   $modal.on('click', (e) => {
     if (e.target === $modal[0]) close();
   });
@@ -895,6 +940,23 @@ export function initUI() {
   $upgBadge = $('#upg-badge');
   buildLaser();
   buildCoins();
+
+  // Settings gear over the lab's top-left corner -> the music/sound modal.
+  $(`<button id="settings-btn" aria-label="Settings">${GEAR_SVG}</button>`)
+    .appendTo('#lab')
+    .on('click', showSettings);
+
+  // Soft "denied" thunk when tapping a disabled (unaffordable / maxed) buy. The
+  // buttons stay disabled — so they emit no click — but pointerdown still fires
+  // over them; a capturing listener catches it before it's swallowed.
+  document.getElementById('upgrades').addEventListener(
+    'pointerdown',
+    (e) => {
+      const btn = e.target.closest && e.target.closest('button.buy, button.next-tier');
+      if (btn && btn.disabled) audio.deny();
+    },
+    true
+  );
 
   // Per-tab affordable dots: add a dot node to each tab button and cache the
   // button so runRefresh can toggle it.
