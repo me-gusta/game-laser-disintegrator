@@ -991,7 +991,7 @@ button.next-tier .nt-have::before {
   height: 0.95em;
   margin-right: 3px;
   vertical-align: -0.15em;
-  background: url('/images/coin.png') center / contain no-repeat;
+  background: url('/images/coin.webp') center / contain no-repeat;
 }
 button.next-tier .nt-need {
   min-width: 0;

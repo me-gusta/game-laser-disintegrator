@@ -56,12 +56,12 @@ const GEAR_SVG =
 
 // Small coin chip stamped beside a price on every buy/upgrade button (and the
 // wallet's coins/sec headline) so a number always reads as "coins", not a bare
-// figure. Same /images/coin.png the wallet uses; sized down via CSS (.coin-sm).
-const COIN_SM = '<img class="coin-sm" src="/images/coin.png" alt="" aria-hidden="true" />';
+// figure. Same /images/coin.webp the wallet uses; sized down via CSS (.coin-sm).
+const COIN_SM = '<img class="coin-sm" src="/images/coin.webp" alt="" aria-hidden="true" />';
 
 // The Vacuum upgrade's game-asset art (first cleaner sprite), shown on the left
 // of its card like the relic rows. Same /images/vacuum art the lab sprites use.
-const VACUUM_IMG = '/images/vacuum/01.png';
+const VACUUM_IMG = '/images/vacuum/01.webp';
 
 // A row of level pips: `lvl` filled (.on) out of `max`. Built at rebuild time —
 // pip fill only changes on a level change, which is exactly what rebuilds.

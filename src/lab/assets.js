@@ -13,16 +13,16 @@ const BASE = '/images';
 const pad2 = (n) => String(n).padStart(2, '0');
 
 // The lab backdrop the whole scene sits in.
-export const BACKGROUND = Texture.from(`${BASE}/background.png`);
+export const BACKGROUND = Texture.from(`${BASE}/background.webp`);
 
-// One emitter (gun) sprite per laser colour tier: laser/01.png .. 07.png.
+// One emitter (gun) sprite per laser colour tier: laser/01.webp .. 07.webp.
 export const LASER_TEX = Array.from({ length: TIER_COUNT }, (_, i) =>
-  Texture.from(`${BASE}/laser/${pad2(i + 1)}.png`)
+  Texture.from(`${BASE}/laser/${pad2(i + 1)}.webp`)
 );
 
 // Three vacuum-cleaner sprites (one per cleaner that spawns as the Vacuum
-// upgrade is levelled): vacuum/01.png .. 03.png. Drawn facing left.
-export const VACUUM_TEX = [1, 2, 3].map((n) => Texture.from(`${BASE}/vacuum/${pad2(n)}.png`));
+// upgrade is levelled): vacuum/01.webp .. 03.webp. Drawn facing left.
+export const VACUUM_TEX = [1, 2, 3].map((n) => Texture.from(`${BASE}/vacuum/${pad2(n)}.webp`));
 
 // Object art is themed per colour tier, one theme folder per tier under
 // /images/objects/<theme>/. Index = 0-based tier (UI shows it +1). Any tier past
@@ -91,7 +91,7 @@ export const objectItemName = (tier, idx) =>
 // of truth for the path, shared by the Pixi texture (below) and the DOM <img> in
 // the Objects tab so both always show the same artwork.
 export const objectImageUrl = (tier, idx) =>
-  `${BASE}/objects/${OBJECT_THEMES[tier] || OBJECT_THEMES[0]}/${pad2(idx + 1)}.png`;
+  `${BASE}/objects/${OBJECT_THEMES[tier] || OBJECT_THEMES[0]}/${pad2(idx + 1)}.webp`;
 
 // Texture for the object at colour `tier`, shape `idx` (0..4). Cached by URL via
 // Texture.from, so repeated spawns of the same object reuse one GPU texture.
