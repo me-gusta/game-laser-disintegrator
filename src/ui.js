@@ -292,6 +292,12 @@ function rebuildObjects(animUnlock = [], animMaxed = []) {
           `<div class="lvl">${pips(objMax, objMax)}</div></div>` +
           `<span class="obj-check${animMaxed[idx] ? ' pop' : ''}" title="Maxed out">${CHECK_SVG}</span></div>`
       ).appendTo($list);
+      if (animMaxed[idx]) {
+        // Same one-shot guard as the unlock reveal: drop `pop` after it plays so
+        // re-showing the panel doesn't replay the checkmark draw.
+        const check = $row[0].querySelector('.obj-check');
+        setTimeout(() => check && check.classList.remove('pop'), 800);
+      }
       return; // maxed rows have no button
     }
 
@@ -312,6 +318,18 @@ function rebuildObjects(animUnlock = [], animMaxed = []) {
         `<div class="lvl">${sub}</div></div>` +
         `<button class="buy">${verb}<br><span class="cost">${fmt(cost)}</span></button></div>`
     ).appendTo($list);
+
+    if (justUnlocked) {
+      // One-shot reveal: once the unlock sequence has played, strip the anim
+      // state and the lock overlay so re-showing the panel (switching tabs and
+      // back restarts CSS animations on display:none->block) can't replay it.
+      // Leaves a clean buyable row; safe no-op if a rebuild detaches it first.
+      const row = $row[0];
+      setTimeout(() => {
+        row.classList.remove('just-unlocked');
+        row.querySelector('.lock-icon')?.remove();
+      }, 1300); // covers the full lock -> art-reveal -> buy-in sequence
+    }
 
     const $btn = $row.find('button');
     $btn.on('click', () => buyObject(idx));
