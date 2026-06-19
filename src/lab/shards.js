@@ -6,7 +6,6 @@
 // collected shard pays out coins.
 import { Container } from '@pixi/display';
 import { Sprite } from '@pixi/sprite';
-import { Text } from '@pixi/text';
 import { GlowFilter } from '@pixi/filter-glow';
 import { VACUUM_TEX, SHARD, whenReady } from './assets.js';
 
@@ -53,8 +52,9 @@ export class Shards {
     this._bufB = [];
 
     // Bottleneck signal: when the scene reports the vacuum can't keep up with
-    // shard production, each cleaner glows a rapid red and wears a "!" so the
-    // player can see income is being throttled (and that Vacuum is the fix).
+    // shard production, each cleaner glows a rapid red so the player can see
+    // income is being throttled. The actual "needs upgrade" call-to-action is a
+    // DOM banner at the bottom of the screen (driven by scene.onThrottleChange).
     this.time = 0;
     this.throttled = false;
   }
@@ -64,38 +64,21 @@ export class Shards {
     this.throttled = on;
   }
 
-  // Lazily build a cleaner's red over-capacity glow filter + floating "!" badge.
+  // Lazily build a cleaner's red over-capacity glow filter.
   _ensureWarn(v) {
-    if (v.warn) return;
-    const t = new Text('!', {
-      fontFamily: 'Impact, "Arial Black", sans-serif',
-      fontSize: 26,
-      fontWeight: 'bold',
-      fill: 0xff4040,
-      stroke: 0x000000,
-      strokeThickness: 4,
-    });
-    t.anchor.set(0.5, 1);
-    t.visible = false;
-    this.container.addChild(t);
-    v.warn = t;
+    if (v.glow) return;
     v.glow = new GlowFilter({ distance: 16, outerStrength: 0, innerStrength: 0, color: 0xff2a2a, quality: 0.25 });
   }
 
-  // Per-frame warning state for one cleaner: attach/strip the red glow and show
-  // or hide its "!" badge above the sprite, pulsing both rapidly while throttled.
+  // Per-frame warning state for one cleaner: attach/strip the red glow, pulsing
+  // it rapidly while throttled.
   _updateWarning(v) {
     if (this.throttled) {
       this._ensureWarn(v);
       if (!v.g.filters) v.g.filters = [v.glow];
       const p = 0.5 + 0.5 * Math.sin(this.time * 0.02); // ~fast pulse
       v.glow.outerStrength = 1.5 + 3.5 * p;
-      v.warn.visible = v.g.visible;
-      v.warn.x = v.g.x;
-      v.warn.y = v.g.y - (v.g.height || 30) - 4;
-      v.warn.alpha = 0.6 + 0.4 * p;
     } else {
-      if (v.warn) v.warn.visible = false;
       if (v.g.filters) v.g.filters = null;
     }
   }
@@ -139,7 +122,6 @@ export class Shards {
     while (this.vacuums.length > configs.length) {
       const v = this.vacuums.pop();
       this.container.removeChild(v.g);
-      if (v.warn) this.container.removeChild(v.warn);
     }
     for (let i = 0; i < this.vacuums.length; i++) {
       const v = this.vacuums[i];
@@ -315,9 +297,9 @@ export class Shards {
     }
 
     for (const v of this.vacuums) this.updateVacuum(v, deltaMS);
-    // Over-capacity warning runs after movement so the "!" badge tracks the
-    // cleaner's current position (updateVacuum has several early returns, so the
-    // warning is updated here rather than threaded through each branch).
+    // Over-capacity warning runs after movement (updateVacuum has several early
+    // returns, so the red-glow pulse is updated here rather than threaded through
+    // each branch).
     for (const v of this.vacuums) this._updateWarning(v);
   }
 

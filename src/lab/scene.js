@@ -84,6 +84,7 @@ export class Scene {
     this.onSnap = null; //        (snapIndex) => void  — a destruction threshold crossed
     this.onShatter = null; //     ()           => void  — the object was destroyed
     this.onLaserTierUp = null; // (tier)       => void  — laser colour tier advanced
+    this.onThrottleChange = null; // (on)      => void  — vacuum over-capacity state flipped
 
     // Tracks laser stats so we only rebuild beams on change. Kept as four numbers
     // (compared field-by-field in update) rather than a joined string, so the
@@ -303,6 +304,7 @@ export class Scene {
     if (throttled !== this.throttled) {
       this.throttled = throttled;
       this.shards.setThrottled(throttled);
+      if (this.onThrottleChange) this.onThrottleChange(throttled);
     }
 
     this.shards.update(dt);

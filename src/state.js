@@ -204,6 +204,7 @@ export function resetState() {
   state.objectTier = 0;
   state.objects = [1, 0, 0, 0, 0];
   state.collection = [];
+  recordUnlock(0, 0); // the first relic is owned for free — catalogue it like a new game
   state.tutorialStep = 0;
   notify();
 }

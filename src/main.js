@@ -8,7 +8,7 @@ import { extensions } from '@pixi/extensions';
 import { Container } from '@pixi/display';
 import { Ticker } from '@pixi/ticker';
 import { Scene } from './lab/scene.js';
-import { initUI, showOfflineReward, showTierBanner, tutOnShatter } from './ui.js';
+import { initUI, showOfflineReward, showTierBanner, showThrottleWarning, tutOnShatter } from './ui.js';
 import { state, addCoins, devNextLaserTier, devNextObjectTier, resetState, recordUnlock } from './state.js';
 import { fmt, fmtCoins } from './format.js';
 import { passiveCoinsPerSecond, offlineCoins, LASER_TIER_NAMES, LASER_TIER_COLORS } from './progression.js';
@@ -16,6 +16,10 @@ import { loadGame, saveGame, clearSave, installAutosave } from './persistence.js
 import { audio } from './audio.js';
 
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+
+// Dev features (console `dev.*` namespace + in-panel dev buttons) are on unless
+// the build explicitly sets VITE_DEV_MODE=false.
+const DEV_MODE = import.meta.env.VITE_DEV_MODE !== 'false';
 
 // Install the audio system's unlock-on-first-gesture + tab-hidden handlers. The
 // scene drives the gameplay sounds (hum/snaps/shatter/coins/tier-up); the UI
@@ -71,6 +75,7 @@ initUI();
 
 // Tier-crossing banner + the durability bar's reactions to the on-screen drama.
 scene.onLaserTierUp = (tier) => showTierBanner(LASER_TIER_NAMES[tier], hex(LASER_TIER_COLORS[tier]));
+scene.onThrottleChange = (on) => showThrottleWarning(on);
 scene.onSnap = () => flashDurability('snap');
 scene.onShatter = () => {
   flashDurability('shatter');
@@ -206,15 +211,20 @@ ticker.add(() => {
 });
 ticker.start();
 
-// Console helpers for this in-house tool.
-window.game = { scene, ticker, state };
-window.dev = {
-  addCoins: (x) => addCoins(Number(x) || 0),
-  nextLaserTier: () => devNextLaserTier(),
-  nextObjectsTier: () => devNextObjectTier(),
-  // Wipe the save and reset all progress back to a fresh start.
-  reset: () => {
-    clearSave();
-    resetState();
-  },
-};
+// Console helpers for this in-house tool. The whole dev surface (this namespace
+// plus the in-panel dev buttons) is gated on VITE_DEV_MODE: a build with
+// VITE_DEV_MODE=false ships with no dev affordances at all.
+if (DEV_MODE) {
+  window.game = { scene, ticker, state };
+  window.dev = {
+    addCoins: (x) => addCoins(Number(x) || 0),
+    nextLaserTier: () => devNextLaserTier(),
+    nextObjectsTier: () => devNextObjectTier(),
+    // Wipe the save, reset all progress, and reload back to a fresh start.
+    reset: () => {
+      clearSave();
+      resetState();
+      location.reload();
+    },
+  };
+}

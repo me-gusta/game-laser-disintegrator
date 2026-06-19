@@ -28,6 +28,10 @@ import {
 
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
 
+// In-panel dev tools are gated on the same flag as the console `dev.*` namespace
+// (wired in main.js): a VITE_DEV_MODE=false build renders no dev buttons.
+const DEV_MODE = import.meta.env.VITE_DEV_MODE !== 'false';
+
 // Inline SVGs for the relics panel. Strokes use currentColor so CSS can theme
 // them (muted lock, green checkmark) without duplicating markup. The named sub-
 // paths (.shackle, .check-ring, .check-mark) are the animation targets.
@@ -209,7 +213,9 @@ function nextTierButton(panel, build, controls) {
           $btn,
           `NEXT TIER → ${build.nextName()}` +
             `<span class="nt-prog"><span class="nt-fill" style="width:${(prog * 100).toFixed(1)}%"></span></span>` +
-            `<span class="nt-meta"><span class="cost">${COIN_SM}${fmt(state.coins)} / ${fmt(cost)}</span>${eta}</span>`
+            `<span class="nt-meta"><span class="nt-have cost">${fmt(state.coins)}</span>` +
+            `<span class="nt-sep">/</span>` +
+            `<span class="nt-need"><span class="cost">${fmt(cost)}</span>${eta}</span></span>`
         );
       }
       setBuyDisabled($btn, !affordable);
@@ -343,6 +349,21 @@ function buildCoins() {
       setBuyDisabled(els.btn, state.coins < cost);
     },
   });
+
+  if (DEV_MODE) buildDevTools(panel);
+}
+
+// Dev-only shortcuts pinned at the bottom of the Coins tab. They delegate to the
+// canonical handlers on window.dev (set up in main.js) so reset/add-coins behave
+// identically whether triggered here or from the console.
+function buildDevTools(panel) {
+  const $box = $('<div class="dev-tools"></div>').appendTo(panel);
+  $('<div class="dev-label">Dev</div>').appendTo($box);
+  const $row = $('<div class="dev-row"></div>').appendTo($box);
+  const btn = (label, fn) => $('<button class="dev-btn"></button>').text(label).appendTo($row).on('click', fn);
+  btn('reset', () => window.dev && window.dev.reset());
+  btn('addCoins 10000', () => window.dev && window.dev.addCoins(10000));
+  btn('addCoins 100000000', () => window.dev && window.dev.addCoins(100000000));
 }
 
 // ----------------------------- Objects tab ---------------------------------
@@ -526,8 +547,10 @@ function showCollection() {
         body +=
           `<div class="cm-card">` +
           `<img class="obj-img" src="${objectImageUrl(e.tier, e.idx)}" alt="${objectItemName(e.tier, e.idx)}" />` +
+          `<div class="cm-info">` +
           `<div class="cm-name">${objectItemName(e.tier, e.idx)}</div>` +
-          `<div class="cm-cps">unlocked at <b>${rate}</b></div></div>`;
+          `<div class="cm-cps">unlocked at <b>${rate}</b></div>` +
+          `</div></div>`;
       }
       body += '</div>';
     }
@@ -599,6 +622,26 @@ export function showTierBanner(name, color) {
   b.innerHTML = `<span class="tb-kicker">TIER UP</span><span class="tb-name">${name} Laser</span>`;
   lab.appendChild(b);
   setTimeout(() => b.remove(), 2200);
+}
+
+// ----------------------- Vacuum over-capacity warning ----------------------
+// A slow-blinking red call-to-action pinned to the bottom-centre of the lab when
+// shard production outruns the vacuum's collection rate. Driven by
+// scene.onThrottleChange (wired in main.js): shown while throttled, removed once
+// the player upgrades the vacuum (or the bottleneck otherwise clears).
+export function showThrottleWarning(on) {
+  const lab = document.getElementById('lab');
+  if (!lab) return;
+  const existing = document.getElementById('vacuum-warning');
+  if (on) {
+    if (existing) return;
+    const w = document.createElement('div');
+    w.id = 'vacuum-warning';
+    w.textContent = 'vaccum cleaner needs upgrade';
+    lab.appendChild(w);
+  } else if (existing) {
+    existing.remove();
+  }
 }
 
 // Mobile bottom-sheet controls (used by both initUI's wiring and the tutorial, so
