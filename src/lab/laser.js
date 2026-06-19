@@ -90,7 +90,10 @@ export class Laser {
     // its beam's mouth (its dx). The per-frame rotation/recoil is applied later in
     // layoutGuns(); here we just (re)create the right number of sprites.
     const tex = LASER_TEX[visual.tier] || LASER_TEX[0];
-    this.emitterLayer.removeChildren();
+    // Destroy the previous guns (default options keep the shared LASER_TEX
+    // texture alive — only the Sprite wrappers are freed) rather than orphaning
+    // them for GC.
+    for (const old of this.emitterLayer.removeChildren()) old.destroy();
     this.emitters = visual.beams.map((b) => {
       const gun = new Sprite(tex);
       gun.anchor.set(0.5, 0.5);
@@ -139,7 +142,10 @@ export class Laser {
   }
 
   rebuildBeams() {
-    this.beamLayer.removeChildren();
+    // Destroy the old beam Graphics so their GraphicsGeometry (WebGL buffers) is
+    // freed now, instead of orphaning them for GC (which never frees the GPU
+    // geometry) — otherwise each laser-stat upgrade leaks a little VRAM.
+    for (const old of this.beamLayer.removeChildren()) old.destroy();
     this.beams = this.visual.beams.map((spec) => {
       const g = new Graphics();
       g._spec = spec;

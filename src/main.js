@@ -86,6 +86,33 @@ if (loaded && loaded.savedAt) {
 saveGame(); // stamp current time as the new baseline
 installAutosave();
 
+// Offline progression on TAB-RETURN, not just on a fresh page load. The reward
+// block above only runs at module load, so a player who merely backgrounds the
+// tab (the common case on mobile) — or returns via the back/forward cache —
+// would otherwise earn nothing for being away. Track when we go hidden and, on
+// return, credit the gap with the SAME offlineCoins() logic the reload path
+// uses (no rate changes; the >=60s gate inside it means quick tab flicker pays
+// nothing and shows no modal). `awayStart` is held in memory rather than read
+// from the save's `savedAt`, because the background autosave keeps advancing
+// savedAt while hidden (which would under-count away-time); the in-memory value
+// also survives a bfcache freeze, so this same handler covers back/forward
+// restores too.
+let awayStart = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    awayStart = Date.now();
+  } else if (document.visibilityState === 'visible' && awayStart) {
+    const elapsedSeconds = (Date.now() - awayStart) / 1000;
+    awayStart = 0;
+    const reward = offlineCoins(elapsedSeconds, passiveCoinsPerSecond(state));
+    if (reward.coins > 0) {
+      addCoins(reward.coins);
+      showOfflineReward(reward);
+      saveGame(); // re-stamp the baseline so a follow-up reload can't re-award the gap
+    }
+  }
+});
+
 // Durability readout above the canvas. The bar runs green (full) -> yellow ->
 // orange -> red (nearly destroyed), interpolated continuously from the fraction.
 const durText = document.getElementById('dur-text');

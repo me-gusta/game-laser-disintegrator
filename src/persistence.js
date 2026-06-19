@@ -11,6 +11,7 @@
 // avoided on purpose: it would disable the back/forward cache.)
 // ---------------------------------------------------------------------------
 import { state } from './state.js';
+import { TIER_COUNT, MAX_LEVEL, objectMaxLevel, BASE } from './progression.js';
 
 // v2: the economy was fundamentally rebalanced (slow-and-weighty curves); v1
 // saves hold progress on incompatible scales, so bump the key to discard them.
@@ -95,6 +96,24 @@ export function loadGame() {
   // those players are clearly not new, so mark the tutorial done (step 3).
   if (!('tutorialStep' in data)) {
     state.tutorialStep = 3;
+  }
+
+  // Clamp every restored field to a valid range so a corrupt or tampered save
+  // (e.g. an out-of-range laserTier indexing undefined colour/name art, or a
+  // negative balance) can't drop the game into a broken state.
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, Math.round(v)));
+  state.coins = Math.max(0, state.coins) || 0;
+  state.laserTier = clamp(state.laserTier, 0, TIER_COUNT - 1);
+  state.objectTier = clamp(state.objectTier, 0, TIER_COUNT - 1);
+  state.laserThickness = clamp(state.laserThickness, 1, MAX_LEVEL);
+  state.laserPower = clamp(state.laserPower, 1, MAX_LEVEL);
+  state.laserBeams = clamp(state.laserBeams, 1, MAX_LEVEL);
+  state.clickLevel = Math.max(0, Math.round(state.clickLevel));
+  state.shardLevel = Math.max(0, Math.round(state.shardLevel));
+  state.vacuumTier = clamp(state.vacuumTier, 0, BASE.vacuumTiers - 1);
+  const omax = objectMaxLevel(state.objectTier);
+  for (let i = 0; i < state.objects.length; i++) {
+    state.objects[i] = clamp(state.objects[i], 0, omax);
   }
 
   return { savedAt: typeof data.savedAt === 'number' ? data.savedAt : null };
