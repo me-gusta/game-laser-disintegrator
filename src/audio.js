@@ -51,6 +51,15 @@ class AudioManager {
     this.settings = { music: true, sound: true };
     this.ready = false; //   flipped true once a user gesture unlocks playback
 
+    // Coin-pitch top-note breaker (see coin()). Without this a long collection
+    // run pins the streak at COIN_STREAK_MAX and the top note machine-guns
+    // forever. `_coinTopRun` counts consecutive top-note hits; once it reaches
+    // `_coinTopBreak` (a fresh random 5-10 each time) we pull the run back to the
+    // bottom via `_coinDrop` and let it climb the scale again.
+    this._coinTopRun = 0;
+    this._coinDrop = 0;
+    this._coinTopBreak = this._randTopBreak();
+
     // One-shots use Web Audio (low latency); the long music loop streams via HTML5
     // audio so it isn't fully decoded into memory. Volumes are individually tuned
     // — the shatter is the loudest (the climax), the coin tick the quietest (it
@@ -60,7 +69,7 @@ class AudioManager {
       explosion: new Howl({ src: [`${FX}/explosion.mp3`], volume: 0.3 }),
       shard1: new Howl({ src: [`${FX}/shard1.mp3`], volume: 0.8 }),
       shard2: new Howl({ src: [`${FX}/shard2.mp3`], volume: 0.8 }),
-      coin: new Howl({ src: [`${FX}/coin.mp3`], volume: 0.22 }),
+      coin: new Howl({ src: [`${FX}/coin.mp3`], volume: 0.15 }),
       buy: new Howl({ src: [`${FX}/buy.mp3`], volume: 0.5 }),
       deny: new Howl({ src: [`${FX}/deny.mp3`], volume: 0.4 }),
       tierUp: new Howl({ src: [`${FX}/tier-up.mp3`], volume: 0.6 }),
@@ -131,9 +140,36 @@ class AudioManager {
   // run drops back to the low note (see shards.js). With several cleaners each
   // carrying their own streak, the ticks interleave into varied pitches rather
   // than the old flat, saturated machine-gun.
+  // A fresh "break after this many top notes" threshold, in [5, 10].
+  _randTopBreak() {
+    return 10 + Math.floor(Math.random() * 6);
+  }
+
   coin(streak = 0) {
     if (!this.ready || !this.settings.sound) return;
-    const n = Math.min(streak, COIN_STREAK_MAX);
+    let n = Math.min(streak, COIN_STREAK_MAX);
+
+    // Break up an endless top-note run. While the streak sits pinned at the top
+    // (big pile + fast vacuum), count the consecutive top hits; once we've held
+    // it for a random 5-10, drop the run back to the low note and let it re-climb
+    // the scale (`_coinDrop` shrinks one step per hit, so the arpeggio walks back
+    // up 0,1,2…). A genuine gameplay restart (cleaner drove to a fresh pile, so
+    // streak fell below the cap) cancels any in-progress re-climb and resets.
+    if (n >= COIN_STREAK_MAX && this._coinDrop === 0) {
+      if (++this._coinTopRun >= this._coinTopBreak) {
+        this._coinTopRun = 0;
+        this._coinTopBreak = this._randTopBreak();
+        this._coinDrop = COIN_STREAK_MAX;
+      }
+    } else if (n < COIN_STREAK_MAX) {
+      this._coinTopRun = 0;
+      this._coinDrop = 0;
+    }
+    if (this._coinDrop > 0) {
+      n = Math.max(0, n - this._coinDrop);
+      this._coinDrop--;
+    }
+
     const semis = 12 * Math.floor(n / PENTA.length) + PENTA[n % PENTA.length];
     const id = this.sfx.coin.play();
     this.sfx.coin.rate(Math.pow(2, semis / 12), id);
