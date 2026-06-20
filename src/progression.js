@@ -49,11 +49,11 @@ export const BASE = {
   laserThickCost: 18, //     thickness upgrade anchor cost
   laserPowerCost: 24, //     power upgrade anchor cost
   laserBeamsCost: 42, //     beams upgrade anchor cost
-  laserStatGrowth: 2.0, //   cost multiplier per stat level (rises faster than the
+  laserStatGrowth: 1.7, //   cost multiplier per stat level (rises faster than the
   //                         flat within-tier income, so each buy takes longer to
   //                         afford -> deceleration -> lean on idle for next tier)
   laserTierCostMult: COST_TIER_MULT, // stat-cost multiplier per tier (> income mult: re-arms the wall)
-  laserNextTierCost: 900, // first NEXT TIER button: a multi-minute idle-funded save
+  laserNextTierCost: 250, // first NEXT TIER button: a multi-minute idle-funded save
   laserNextTierGrowth: COST_TIER_MULT, // x per tier (> income mult, so the leap is earned each time)
 
   // --- Click power (instant damage per screen click) ---
@@ -114,7 +114,7 @@ export const BASE = {
   // tier; tiers past the end use the last value. The UI shows tiers 1-indexed,
   // so this reads as "tier 1 -> 2 levels, tier 2 -> 3, tier 3+ -> 5".
   objMaxLevels: [2, 3, 5],
-  objNextTierCost: 1200, //     first objects NEXT TIER button: a multi-minute idle save
+  objNextTierCost: 450, //      first objects NEXT TIER button: a multi-minute idle save
   objNextTierGrowth: COST_TIER_MULT, // x per tier (> income mult, so the leap is earned each time)
 };
 

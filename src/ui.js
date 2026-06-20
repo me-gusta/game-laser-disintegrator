@@ -517,7 +517,7 @@ function rebuildObjects(animUnlock = [], animMaxed = []) {
       maxedTier: () => state.objectTier >= P.TIER_COUNT - 1,
       ready: objectTierMaxed,
       cost: () => P.objectNextTierCost(state.objectTier),
-      nextName: () => TIERS[state.objectTier + 1].name,
+      nextName: () => objectSetName(state.objectTier + 1),
       buy: buyObjectNextTier,
     },
     objControls
