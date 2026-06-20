@@ -1,8 +1,14 @@
 // persistence.js
 // ---------------------------------------------------------------------------
-// Saves the game state to localStorage and restores it on boot. Every save
-// stamps a `savedAt` wall-clock time so main.js can work out how long the
-// player was away and grant offline progression (see progression.offlineCoins).
+// Saves the game state via the platform storage seam and restores it on boot.
+// Every save stamps a `savedAt` wall-clock time so main.js can work out how long
+// the player was away and grant offline progression (see progression.offlineCoins).
+//
+// Storage is `platform`'s `data` module — localStorage in dev, the CrazyGames
+// data module in the CrazyGames build — both exposing the same synchronous
+// getItem/setItem/removeItem API. We write the WHOLE state under one key, so
+// there's no partial-write hazard (the "retrieve before set" caution in the
+// CrazyGames docs is about merging into shared data; we own the full blob).
 //
 // We persist on every way out of the page — closing/reloading the tab and
 // bfcache/mobile navigation (pagehide), and the tab being hidden i.e. switched
@@ -12,6 +18,8 @@
 // ---------------------------------------------------------------------------
 import { state } from './state.js';
 import { TIER_COUNT, MAX_LEVEL, objectMaxLevel, BASE } from './progression.js';
+// Imported as `storage` because saveGame/loadGame already use a local `data`.
+import { data as storage } from './platform/platform.js';
 
 // v2: the economy was fundamentally rebalanced (slow-and-weighty curves); v1
 // saves hold progress on incompatible scales, so bump the key to discard them.
@@ -39,9 +47,10 @@ export function saveGame() {
   try {
     const data = { v: 2, savedAt: Date.now() };
     for (const k of SAVE_KEYS) data[k] = state[k];
-    localStorage.setItem(KEY, JSON.stringify(data));
+    storage.setItem(KEY, JSON.stringify(data));
   } catch {
-    // Private mode / quota / disabled storage — saving is best-effort.
+    // Private mode / quota / disabled storage / CrazyGames dataLimitExceeded —
+    // saving is best-effort.
   }
 }
 
@@ -49,7 +58,7 @@ export function saveGame() {
 // will write a fresh one from the reset state on its next tick.
 export function clearSave() {
   try {
-    localStorage.removeItem(KEY);
+    storage.removeItem(KEY);
   } catch {
     // Best-effort, same as saveGame.
   }
@@ -60,7 +69,7 @@ export function clearSave() {
 export function loadGame() {
   let data;
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = storage.getItem(KEY);
     if (!raw) return null;
     data = JSON.parse(raw);
   } catch {

@@ -7,6 +7,7 @@ import { fmt, fmtCoins, fmtDuration } from './format.js';
 import { objectImageUrl, objectSetName, objectItemName } from './lab/assets.js';
 import { saveGame } from './persistence.js';
 import { audio } from './audio.js';
+import { platform } from './platform/platform.js';
 import {
   state,
   onChange,
@@ -29,8 +30,9 @@ import {
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
 
 // In-panel dev tools are gated on the same flag as the console `dev.*` namespace
-// (wired in main.js): a VITE_DEV_MODE=false build renders no dev buttons.
-const DEV_MODE = import.meta.env.VITE_DEV_MODE !== 'false';
+// (wired in main.js): the crazygames build renders no dev buttons.
+/* global __DEV_MODE__ */
+const DEV_MODE = __DEV_MODE__;
 
 // Inline SVGs for the relics panel. Strokes use currentColor so CSS can theme
 // them (muted lock, green checkmark) without duplicating markup. The named sub-
@@ -568,7 +570,11 @@ function showCollection() {
       `</div></div>`
   ).appendTo('body');
 
-  const close = () => $modal.remove();
+  platform.gameplayStop(); // entering a menu — pause the platform gameplay session
+  const close = () => {
+    $modal.remove();
+    platform.gameplayStart(); // back to the game
+  };
   $modal.find('.close').on('click', close);
   $modal.on('click', (e) => {
     if (e.target === $modal[0]) close();
@@ -578,8 +584,8 @@ function showCollection() {
 // ---------------------------- Settings modal -------------------------------
 // Music + sound toggles with a Save button, opened by the gear button over the
 // lab. Toggles apply LIVE (you hear the change in the panel); persistence to
-// localStorage happens on Save — and also on a backdrop dismiss, so a previewed
-// change is never silently lost.
+// the platform store happens on Save — and also on a backdrop dismiss, so a
+// previewed change is never silently lost.
 function showSettings() {
   $('#settings-modal').remove(); // never stack two
 
@@ -603,7 +609,8 @@ function showSettings() {
   $music.on('change', () => audio.setMusic($music.is(':checked')));
   $sound.on('change', () => audio.setSound($sound.is(':checked')));
 
-  const close = () => { audio.save(); $modal.remove(); };
+  platform.gameplayStop(); // entering a menu — pause the platform gameplay session
+  const close = () => { audio.save(); $modal.remove(); platform.gameplayStart(); };
   $modal.find('.save').on('click', close);
   $modal.on('click', (e) => {
     if (e.target === $modal[0]) close();

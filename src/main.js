@@ -2,6 +2,12 @@
 // Bootstraps the Pixi renderer (no @pixi/app in this build, so we drive a
 // Renderer + Ticker + stage Container ourselves), mounts the canvas, wires the
 // scene, UI and click-to-damage, then runs the loop.
+//
+// Boot is ASYNC: we await platform.init() (real CrazyGames SDK in the crazygames
+// build, a mock in dev) before reading any save, so on CrazyGames the data module
+// is the live backend by the time loadGame() runs — not stale localStorage. The
+// scene/ticker live at module scope (assigned in boot) because the durability HUD
+// helpers and the dev namespace reference them.
 import './style.css';
 import { Renderer, BatchRenderer } from '@pixi/core';
 import { extensions } from '@pixi/extensions';
@@ -14,21 +20,15 @@ import { fmt, fmtCoins } from './format.js';
 import { passiveCoinsPerSecond, offlineCoins, LASER_TIER_NAMES, LASER_TIER_COLORS } from './progression.js';
 import { loadGame, saveGame, clearSave, installAutosave } from './persistence.js';
 import { audio } from './audio.js';
+import { platform } from './platform/platform.js';
+
+/* global __DEV_MODE__ */
 
 const hex = (n) => '#' + n.toString(16).padStart(6, '0');
 
-// Dev features (console `dev.*` namespace + in-panel dev buttons) are on unless
-// the build explicitly sets VITE_DEV_MODE=false.
-const DEV_MODE = import.meta.env.VITE_DEV_MODE !== 'false';
-
-// Install the audio system's unlock-on-first-gesture + tab-hidden handlers. The
-// scene drives the gameplay sounds (hum/snaps/shatter/coins/tier-up); the UI
-// drives buy/deny and the settings toggles.
-audio.init();
-
-// Restore any saved game BEFORE the scene/UI read state, so they build from the
-// player's real progress. `loaded.savedAt` tells us how long they were away.
-const loaded = loadGame();
+// Dev features (console `dev.*` namespace + in-panel dev buttons) are on in the
+// dev build and stripped from the crazygames build (see the vite configs).
+const DEV_MODE = __DEV_MODE__;
 
 // Register the batch renderer used to draw Graphics/Sprites (auto-done by
 // @pixi/app normally, but we are wiring core by hand).
@@ -37,56 +37,12 @@ extensions.add(BatchRenderer);
 const LAB_W = 480;
 const LAB_H = 680;
 
-const renderer = new Renderer({
-  width: LAB_W,
-  height: LAB_H,
-  backgroundColor: 0x0d0f17,
-  antialias: true,
-  // Cap at 2: on a 3x display the canvas + every GlowFilter render-to-texture
-  // pass would otherwise run at ~9x the pixels for no visible gain at this size.
-  resolution: Math.min(window.devicePixelRatio || 1, 2),
-  autoDensity: true,
-});
+// Assigned in boot() once the scene exists; the durability HUD helpers below and
+// the dev namespace read it.
+let scene;
 
-document.getElementById('lab').appendChild(renderer.view);
+// CrazyGames "common fixes"
 
-const stage = new Container();
-const scene = new Scene(LAB_W, LAB_H, renderer);
-stage.addChild(scene.container);
-
-// Click anywhere on the lab -> click damage at the pointer position. The canvas
-// is often CSS-scaled (mobile/landscape) so convert client coords into the lab's
-// native 480x680 space before handing them to the scene (ripple + recoil land on
-// the real hit point).
-renderer.view.addEventListener('pointerdown', (e) => {
-  const rect = renderer.view.getBoundingClientRect();
-  const x = rect.width ? ((e.clientX - rect.left) / rect.width) * LAB_W : LAB_W / 2;
-  const y = rect.height ? ((e.clientY - rect.top) / rect.height) * LAB_H : LAB_H / 2;
-  scene.click(x, y);
-});
-
-// CrazyGames "common fixes": tame default browser behaviour that fights a
-// full-window game inside their iframe. Adapted for a DOM+canvas game (we are
-// not Unity), so each guard makes an exception for the parts of the UI that
-// legitimately need the default:
-//   - wheel: stop the PAGE from scrolling, but let the upgrade panels and the
-//     collection modal (the only scroll containers) scroll as normal.
-//   - keydown: stop Arrow/Space from scrolling the page, but never swallow keys
-//     aimed at an interactive control (settings checkbox, buttons, links) so they
-//     stay keyboard-usable.
-//   - contextmenu: suppress the right-click / long-press menu over the game.
-// (The doc's Samsung-webview visibilitychange snippet is Unity-specific —
-//  `application.publishEvent('OnWebDocumentPause', …)` — and N/A here; our own
-//  visibilitychange handlers in main.js / audio.js already cover music
-//  pause/resume and offline-credit on return.)
-window.addEventListener(
-  'wheel',
-  (e) => {
-    const el = e.target;
-    if (!(el instanceof Element) || !el.closest('.panel, .cm-scroll')) e.preventDefault();
-  },
-  { passive: false }
-);
 window.addEventListener('keydown', (e) => {
   const t = e.target;
   const tag = t && t.tagName;
@@ -96,65 +52,6 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === ' ') e.preventDefault();
 });
 document.addEventListener('contextmenu', (e) => e.preventDefault());
-
-// Brand-new player (no save at all): seed the starter relic into the collection
-// log and let the onboarding hints play. Returning players are gated out by the
-// persisted tutorial flags (see persistence.loadGame).
-const isNewPlayer = !loaded;
-if (isNewPlayer) recordUnlock(0, 0);
-
-initUI();
-
-// Tier-crossing banner + the durability bar's reactions to the on-screen drama.
-scene.onLaserTierUp = (tier) => showTierBanner(LASER_TIER_NAMES[tier], hex(LASER_TIER_COLORS[tier]));
-scene.onThrottleChange = (on) => showThrottleWarning(on);
-scene.onSnap = () => flashDurability('snap');
-scene.onShatter = () => {
-  flashDurability('shatter');
-  tutOnShatter(); // advance the first-run tutorial past "destroy your first object"
-};
-
-// Offline progression: credit coins the laser "earned" while the tab was gone
-// (>=60s, counted up to 24h, at the full live passive rate). Granted after the UI
-// has subscribed so the coin counter updates, then we immediately re-save to
-// stamp a fresh savedAt (otherwise a quick reload would award the gap twice).
-if (loaded && loaded.savedAt) {
-  const elapsedSeconds = (Date.now() - loaded.savedAt) / 1000;
-  const reward = offlineCoins(elapsedSeconds, passiveCoinsPerSecond(state));
-  if (reward.coins > 0) {
-    addCoins(reward.coins);
-    showOfflineReward(reward);
-  }
-}
-saveGame(); // stamp current time as the new baseline
-installAutosave();
-
-// Offline progression on TAB-RETURN, not just on a fresh page load. The reward
-// block above only runs at module load, so a player who merely backgrounds the
-// tab (the common case on mobile) — or returns via the back/forward cache —
-// would otherwise earn nothing for being away. Track when we go hidden and, on
-// return, credit the gap with the SAME offlineCoins() logic the reload path
-// uses (no rate changes; the >=60s gate inside it means quick tab flicker pays
-// nothing and shows no modal). `awayStart` is held in memory rather than read
-// from the save's `savedAt`, because the background autosave keeps advancing
-// savedAt while hidden (which would under-count away-time); the in-memory value
-// also survives a bfcache freeze, so this same handler covers back/forward
-// restores too.
-let awayStart = 0;
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') {
-    awayStart = Date.now();
-  } else if (document.visibilityState === 'visible' && awayStart) {
-    const elapsedSeconds = (Date.now() - awayStart) / 1000;
-    awayStart = 0;
-    const reward = offlineCoins(elapsedSeconds, passiveCoinsPerSecond(state));
-    if (reward.coins > 0) {
-      addCoins(reward.coins);
-      showOfflineReward(reward);
-      saveGame(); // re-stamp the baseline so a follow-up reload can't re-award the gap
-    }
-  }
-});
 
 // Durability readout above the canvas. The bar runs green (full) -> yellow ->
 // orange -> red (nearly destroyed), interpolated continuously from the fraction.
@@ -235,28 +132,142 @@ function updateDurability() {
   durFill.style.background = durColor(frac);
 }
 
-const ticker = new Ticker();
-ticker.add(() => {
-  scene.update(ticker.deltaMS);
-  updateDurability();
-  renderer.render(stage);
-});
-ticker.start();
+async function boot() {
+  // Select + initialise the platform SDK (this also fires loadingStart). Must
+  // complete before any data access so saves read the live backend.
+  await platform.init();
 
-// Console helpers for this in-house tool. The whole dev surface (this namespace
-// plus the in-panel dev buttons) is gated on VITE_DEV_MODE: a build with
-// VITE_DEV_MODE=false ships with no dev affordances at all.
-if (DEV_MODE) {
-  window.game = { scene, ticker, state };
-  window.dev = {
-    addCoins: (x) => addCoins(Number(x) || 0),
-    nextLaserTier: () => devNextLaserTier(),
-    nextObjectsTier: () => devNextObjectTier(),
-    // Wipe the save, reset all progress, and reload back to a fresh start.
-    reset: () => {
-      clearSave();
-      resetState();
-      location.reload();
-    },
+  // Master-mute the mix to the host's muteAudio setting — the CrazyGames chrome
+  // can mute the game, and this fires once immediately with the current value
+  // (and again on every change) so the initial state is applied here too.
+  platform.onSettingsChange((s) => audio.setMuted(!!s.muteAudio));
+
+  // Install the audio system's unlock-on-first-gesture + tab-hidden handlers (it
+  // also loads the persisted toggles from the platform store now that it's live).
+  audio.init();
+
+  // Restore any saved game BEFORE the scene/UI read state, so they build from the
+  // player's real progress. `loaded.savedAt` tells us how long they were away.
+  const loaded = loadGame();
+
+  const renderer = new Renderer({
+    width: LAB_W,
+    height: LAB_H,
+    backgroundColor: 0x0d0f17,
+    antialias: true,
+    // Cap at 2: on a 3x display the canvas + every GlowFilter render-to-texture
+    // pass would otherwise run at ~9x the pixels for no visible gain at this size.
+    resolution: Math.min(window.devicePixelRatio || 1, 2),
+    autoDensity: true,
+  });
+
+  document.getElementById('lab').appendChild(renderer.view);
+
+  const stage = new Container();
+  scene = new Scene(LAB_W, LAB_H, renderer);
+  stage.addChild(scene.container);
+
+  // Click anywhere on the lab -> click damage at the pointer position. The canvas
+  // is often CSS-scaled (mobile/landscape) so convert client coords into the lab's
+  // native 480x680 space before handing them to the scene (ripple + recoil land on
+  // the real hit point).
+  renderer.view.addEventListener('pointerdown', (e) => {
+    const rect = renderer.view.getBoundingClientRect();
+    const x = rect.width ? ((e.clientX - rect.left) / rect.width) * LAB_W : LAB_W / 2;
+    const y = rect.height ? ((e.clientY - rect.top) / rect.height) * LAB_H : LAB_H / 2;
+    scene.click(x, y);
+  });
+
+  // Brand-new player (no save at all): seed the starter relic into the collection
+  // log and let the onboarding hints play. Returning players are gated out by the
+  // persisted tutorial flags (see persistence.loadGame).
+  const isNewPlayer = !loaded;
+  if (isNewPlayer) recordUnlock(0, 0);
+
+  initUI();
+
+  // Tier-crossing banner + the durability bar's reactions to the on-screen drama.
+  scene.onLaserTierUp = (tier) => showTierBanner(LASER_TIER_NAMES[tier], hex(LASER_TIER_COLORS[tier]));
+  scene.onThrottleChange = (on) => showThrottleWarning(on);
+  scene.onSnap = () => flashDurability('snap');
+  scene.onShatter = () => {
+    flashDurability('shatter');
+    tutOnShatter(); // advance the first-run tutorial past "destroy your first object"
   };
+
+  // Offline progression: credit coins the laser "earned" while the tab was gone
+  // (>=60s, counted up to 24h, at the full live passive rate). Granted after the UI
+  // has subscribed so the coin counter updates, then we immediately re-save to
+  // stamp a fresh savedAt (otherwise a quick reload would award the gap twice).
+  if (loaded && loaded.savedAt) {
+    const elapsedSeconds = (Date.now() - loaded.savedAt) / 1000;
+    const reward = offlineCoins(elapsedSeconds, passiveCoinsPerSecond(state));
+    if (reward.coins > 0) {
+      addCoins(reward.coins);
+      showOfflineReward(reward);
+    }
+  }
+  saveGame(); // stamp current time as the new baseline
+  installAutosave();
+
+  // Offline progression on TAB-RETURN, not just on a fresh page load. The reward
+  // block above only runs at boot, so a player who merely backgrounds the tab (the
+  // common case on mobile) — or returns via the back/forward cache — would
+  // otherwise earn nothing for being away. Track when we go hidden and, on return,
+  // credit the gap with the SAME offlineCoins() logic the reload path uses (no rate
+  // changes; the >=60s gate inside it means quick tab flicker pays nothing and
+  // shows no modal). `awayStart` is held in memory rather than read from the save's
+  // `savedAt`, because the background autosave keeps advancing savedAt while hidden
+  // (which would under-count away-time); the in-memory value also survives a
+  // bfcache freeze, so this same handler covers back/forward restores too.
+  let awayStart = 0;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      awayStart = Date.now();
+    } else if (document.visibilityState === 'visible' && awayStart) {
+      const elapsedSeconds = (Date.now() - awayStart) / 1000;
+      awayStart = 0;
+      const reward = offlineCoins(elapsedSeconds, passiveCoinsPerSecond(state));
+      if (reward.coins > 0) {
+        addCoins(reward.coins);
+        showOfflineReward(reward);
+        saveGame(); // re-stamp the baseline so a follow-up reload can't re-award the gap
+      }
+    }
+  });
+
+  const ticker = new Ticker();
+  ticker.add(() => {
+    scene.update(ticker.deltaMS);
+    updateDurability();
+    renderer.render(stage);
+  });
+  ticker.start();
+
+  // The game is up and interactive: tell the platform loading is done and the
+  // first gameplay session has begun (the UI pauses/resumes it around menus).
+  platform.loadingStop();
+  platform.gameplayStart();
+
+  // Console helpers for this in-house tool. The whole dev surface (this namespace
+  // plus the in-panel dev buttons) is stripped from the crazygames build.
+  if (DEV_MODE) {
+    window.game = { scene, ticker, state };
+    window.dev = {
+      addCoins: (x) => addCoins(Number(x) || 0),
+      nextLaserTier: () => devNextLaserTier(),
+      nextObjectsTier: () => devNextObjectTier(),
+      // Simulate the host toggling its muteAudio setting, to exercise the live
+      // settings-change path locally (no-op on the real SDK).
+      setMuted: (on) => platform._simulateSettings({ muteAudio: !!on }),
+      // Wipe the save, reset all progress, and reload back to a fresh start.
+      reset: () => {
+        clearSave();
+        resetState();
+        location.reload();
+      },
+    };
+  }
 }
+
+boot();

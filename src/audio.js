@@ -2,8 +2,9 @@
 // ---------------------------------------------------------------------------
 // All game sound, built on Howler. Punchy one-shots for snaps / shatter / coins
 // / buys / denied taps, a celebratory tier-up sting, and a background music loop.
-// Two independent toggles — music and sound — persist to localStorage; both
-// default on.
+// Two independent toggles — music and sound — persist via the platform store;
+// both default on. A separate platform-driven master mute (setMuted) sits on top
+// for the host's muteAudio setting.
 //
 // Browsers block audio until a user gesture, so everything stays silent until the
 // first pointer/key interaction unlocks playback (see init/_unlock). Callers stay
@@ -12,6 +13,8 @@
 // purpose — this is a long-session idle game, not an arcade.
 // ---------------------------------------------------------------------------
 import { Howl, Howler } from 'howler';
+// Platform storage seam (localStorage in dev, CrazyGames data module in prod).
+import { data as storage } from './platform/platform.js';
 
 // Relative (no leading slash): CrazyGames serves the game from a CDN sub-path,
 // where an absolute `/sound_fx/...` would resolve to the CDN root and 404.
@@ -27,10 +30,12 @@ const PENTA = [0, 2, 4, 7, 9];
 const COIN_STREAK_MAX = 6; // highest scale degree the run reaches before it holds
 
 // Restore the saved toggles. Either toggle defaults ON (only an explicit `false`
-// in storage turns it off), so a fresh player gets full sound.
+// in storage turns it off), so a fresh player gets full sound. Reads the platform
+// store, so it must run AFTER platform.init() — hence it's called from init(),
+// not the constructor (which runs at import, before the backend is selected).
 function loadSettings() {
   try {
-    const d = JSON.parse(localStorage.getItem(LS_KEY));
+    const d = JSON.parse(storage.getItem(LS_KEY));
     if (d && typeof d === 'object') {
       return { music: d.music !== false, sound: d.sound !== false };
     }
@@ -42,7 +47,8 @@ function loadSettings() {
 
 class AudioManager {
   constructor() {
-    this.settings = loadSettings();
+    // Defaults until init() loads the persisted toggles from platform storage.
+    this.settings = { music: true, sound: true };
     this.ready = false; //   flipped true once a user gesture unlocks playback
 
     // One-shots use Web Audio (low latency); the long music loop streams via HTML5
@@ -63,8 +69,10 @@ class AudioManager {
   }
 
   // Wire the one-time unlock gesture and the tab-hidden music pause. Call once on
-  // boot (main.js).
+  // boot (main.js), AFTER platform.init() so the persisted toggles can be read
+  // from the platform store.
   init() {
+    this.settings = loadSettings();
     const unlock = () => this._unlock();
     // Capture + once so the very first interaction anywhere unlocks audio —
     // including the lab-canvas tap that also deals click damage.
@@ -157,7 +165,7 @@ class AudioManager {
 
   // --- settings (live preview + persistence) -------------------------------
   // Toggles apply immediately so the player hears the change in the modal; save()
-  // commits them to localStorage.
+  // commits them to the platform store.
   setMusic(on) {
     this.settings.music = on;
     if (on) { if (this.ready) this._playMusic(); }
@@ -168,9 +176,18 @@ class AudioManager {
     // One-shots are short and simply stop firing once the toggle is off (their
     // guards return early).
   }
+
+  // Master mute driven by the host platform (CrazyGames `settings.muteAudio`),
+  // wired in main.js. This is a hard gate ON TOP OF the player's own music/sound
+  // toggles — `Howler.mute(true)` silences everything without disturbing those
+  // preferences, so unmuting restores exactly the player's chosen mix.
+  setMuted(muted) {
+    Howler.mute(muted);
+  }
+
   save() {
     try {
-      localStorage.setItem(LS_KEY, JSON.stringify(this.settings));
+      storage.setItem(LS_KEY, JSON.stringify(this.settings));
     } catch {
       // Best-effort, same as the game save.
     }

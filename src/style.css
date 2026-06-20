@@ -335,7 +335,7 @@ button.buy .cost {
   color: var(--gold);
 }
 
-/* Dev-only shortcuts at the bottom of the Coins tab (gated on VITE_DEV_MODE). */
+/* Dev-only shortcuts at the bottom of the Coins tab (dev build only). */
 .dev-tools {
   margin-top: 16px;
   padding-top: 12px;
@@ -862,14 +862,20 @@ button.buy .cost {
 }
 
 /* ---------------------------------------------------------------------------
-   LANDSCAPE phones (short, wide viewports): restore the desktop-like side-by-
-   side layout — lab on the left, the menu as a normal right-hand column — but
-   fit the canvas to the short height so it never overflows. Keyed on a short
-   viewport height so tablets/desktops (taller) keep their native layout and
-   only phones-on-their-side get this. The portrait bottom-sheet block above
-   does not apply here, so its trigger/handle/backdrop stay hidden.
+   SHORT, WIDE (landscape) viewports — phones on their side AND short desktop /
+   embed windows (e.g. CrazyGames iframes at 907x510, 1216x684). Restore the
+   desktop-like side-by-side layout — lab on the left, the menu as a normal
+   right-hand column — but bind the page to the viewport height and fit the
+   canvas to it so the lab never overflows the bottom.
+
+   The native content stack is ~790px tall (canvas 680 + gap + durability +
+   page padding), so any viewport shorter than that would otherwise scroll/
+   overflow. We trigger a touch above that (820px) so the cutover happens just
+   before overflow begins; taller windows keep the native, unconstrained
+   layout. The portrait bottom-sheet block above does not apply here, so its
+   trigger/handle/backdrop stay hidden.
    --------------------------------------------------------------------------- */
-@media (orientation: landscape) and (max-height: 500px) {
+@media (orientation: landscape) and (max-height: 820px) {
   #game {
     height: 100vh;
     height: 100dvh;
