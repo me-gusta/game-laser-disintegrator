@@ -18,6 +18,14 @@ import { Howl, Howler } from 'howler';
 const FX = 'sound_fx';
 const LS_KEY = 'laserDisintegrator/audio/v1';
 
+// Major-pentatonic semitone steps. The coin tick walks UP this scale as a
+// cleaner's collection streak climbs, so a local pickup run sounds like a
+// rising musical arpeggio instead of a flat machine-gun. Snapping to a scale
+// (rather than a continuous glissando) keeps every step consonant. Capped at a
+// short run so a maxed vacuum tops out around ~2.2x rate, not a chipmunk squeak.
+const PENTA = [0, 2, 4, 7, 9];
+const COIN_STREAK_MAX = 6; // highest scale degree the run reaches before it holds
+
 // Restore the saved toggles. Either toggle defaults ON (only an explicit `false`
 // in storage turns it off), so a fresh player gets full sound.
 function loadSettings() {
@@ -36,8 +44,6 @@ class AudioManager {
   constructor() {
     this.settings = loadSettings();
     this.ready = false; //   flipped true once a user gesture unlocks playback
-    this._lastCoin = 0; //   ms timestamp of the last coin tick (for streak detection)
-    this._coinStreak = 0; // consecutive fast coins -> rising pitch (idle-game classic)
 
     // One-shots use Web Audio (low latency); the long music loop streams via HTML5
     // audio so it isn't fully decoded into memory. Volumes are individually tuned
@@ -76,14 +82,20 @@ class AudioManager {
     // is too late on iOS. So resume on every touchend/click while suspended, per
     // the CrazyGames mobile-audio requirement. Not `once`: an interruption can
     // happen any number of times in a session.
-    const resumeOnGesture = () => {
-      if (Howler.ctx && Howler.ctx.state !== 'running') {
-        Howler.ctx.resume();
-        if (this.ready && this.settings.music) this._playMusic();
-      }
+    const reviveAudio = () => {
+      // Revive a suspended WebAudio context (iOS interruptions) when present.
+      if (Howler.ctx && Howler.ctx.state !== 'running') Howler.ctx.resume();
+      // ALSO (re)start the streaming music if it should be playing but isn't.
+      // On mobile the very first unlock gesture usually fires before the music
+      // track has finished loading, so its queued play() resolves outside a user
+      // gesture and the browser blocks it — and the old code only retried while
+      // the ctx was suspended, which it isn't once the SFX context is running.
+      // So music stayed silent until the player toggled it off/on. Retrying on
+      // every tap restarts it the moment it's loaded; _playMusic is idempotent.
+      if (this.ready && this.settings.music) this._playMusic();
     };
-    document.addEventListener('touchend', resumeOnGesture);
-    document.addEventListener('click', resumeOnGesture);
+    document.addEventListener('touchend', reviveAudio);
+    document.addEventListener('click', reviveAudio);
   }
 
   _unlock() {
@@ -96,21 +108,27 @@ class AudioManager {
   }
 
   _playMusic() {
-    if (!this.music.playing()) this.music.play();
+    // Only (re)start a loaded, idle loop. Skipping while still 'loading' avoids
+    // queueing a pre-load play() that a mobile browser later blocks (and avoids
+    // stacking duplicate voices if several gestures land during that window) —
+    // the loop instead starts on the first gesture after the track is loaded.
+    if (this.music.state() === 'loaded' && !this.music.playing()) this.music.play();
   }
 
   // --- coin tick -----------------------------------------------------------
-  // Round-robins Howler's voice pool, with a streak-rising pitch so a maxed
-  // vacuum's tens-per-second don't machine-gun — the pitch climbs on a fast run
-  // and resets after a gap.
-  coin() {
+  // Round-robins Howler's voice pool at a pitch set by the collecting cleaner's
+  // streak: each shard a cleaner pulls off a *local* cluster steps the note up a
+  // major-pentatonic scale, so a pickup run rises like an arpeggio; when the
+  // cleaner drives off to a fresh pile the caller resets `streak` to 0 and the
+  // run drops back to the low note (see shards.js). With several cleaners each
+  // carrying their own streak, the ticks interleave into varied pitches rather
+  // than the old flat, saturated machine-gun.
+  coin(streak = 0) {
     if (!this.ready || !this.settings.sound) return;
-    const now = Date.now();
-    if (now - this._lastCoin < 250) this._coinStreak = Math.min(this._coinStreak + 1, 30);
-    else this._coinStreak = 0;
-    this._lastCoin = now;
+    const n = Math.min(streak, COIN_STREAK_MAX);
+    const semis = 12 * Math.floor(n / PENTA.length) + PENTA[n % PENTA.length];
     const id = this.sfx.coin.play();
-    this.sfx.coin.rate(Math.min(2.4, 1 + this._coinStreak * 0.035), id);
+    this.sfx.coin.rate(Math.pow(2, semis / 12), id);
   }
 
   // A smaller crunch on each destruction-tier crossing; alternate the two shard

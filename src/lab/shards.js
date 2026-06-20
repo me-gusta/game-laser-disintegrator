@@ -15,6 +15,11 @@ const COL_W = 12; // width of a stacking column (px)
 const VAC_H_MIN = 23; // displayed cleaner height at local level 0
 const VAC_H_MAX = 43; // displayed cleaner height at local level 9
 const VAC_LINGER_MS = 800; // pause on the last shard's spot before heading home
+// Coin-pitch streak (passed to the collect callback -> audio): a cleaner working
+// a local cluster climbs a rising run; the run resets to the low note when it
+// drives a long way to a fresh pile (> this many px in one hop) or stalls.
+const STREAK_RESET_PX = 180; // a "drove to a new region" hop (> the local-meander bias)
+const STREAK_RESET_MS = 700; // an idle gap (travelling far / lingering) also resets the run
 
 export class Shards {
   // onCollect(worth) is called once per shard the vacuum picks up.
@@ -114,7 +119,7 @@ export class Shards {
       const i = this.vacuums.length;
       const g = this._makeVacuum(i);
       g.x = -60 - 60 * i; // stagger entrances off-screen to the left
-      const v = { g, color: configs[i].color, interval: configs[i].interval, level: configs[i].level || 0, scaleMag: 1, suckTimer: 0, targetCol: -1, homeDir: 0, homeDelay: 0 };
+      const v = { g, color: configs[i].color, interval: configs[i].interval, level: configs[i].level || 0, scaleMag: 1, suckTimer: 0, targetCol: -1, homeDir: 0, homeDelay: 0, streak: 0, lastSuckX: 0, lastSuckT: 0 };
       this.vacuums.push(v);
       // Size now if the texture is ready, otherwise once it loads.
       whenReady(g.texture, () => this._scaleVacuum(v));
@@ -402,14 +407,24 @@ export class Shards {
     if (Math.abs(dx) < COL_W && v.suckTimer >= v.interval) {
       v.suckTimer = 0;
       const colArr = this.columns[v.targetCol];
-      if (colArr.length) this.collect(colArr[colArr.length - 1]); // top of the pile
+      if (colArr.length) {
+        // Rising coin run: climb a step while this cleaner keeps picking up
+        // nearby shards, but start over at the low note when it has just driven
+        // a long way to a fresh pile, or sat idle for a beat (travel / linger).
+        const drove = Math.abs(v.g.x - v.lastSuckX) > STREAK_RESET_PX;
+        const stalled = this.time - v.lastSuckT > STREAK_RESET_MS;
+        v.streak = drove || stalled ? 0 : v.streak + 1;
+        v.lastSuckX = v.g.x;
+        v.lastSuckT = this.time;
+        this.collect(colArr[colArr.length - 1], v.streak); // top of the pile
+      }
       this._pickTarget(v); // wander on to another nearby pile
     }
   }
 
-  collect(shard) {
+  collect(shard, streak = 0) {
     const { x, y } = shard.g; // capture before _remove detaches the sprite
     this._remove(shard);
-    this.onCollect(shard.worth, x, y);
+    this.onCollect(shard.worth, x, y, streak);
   }
 }

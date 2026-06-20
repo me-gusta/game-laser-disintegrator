@@ -59,10 +59,10 @@ export class Scene {
     this.effects = new Effects(this.dims);
     // Each shard the vacuum collects pays out coins and pops a dark-yellow "+N"
     // coin number at the shard's spot (same float/fade as damage numbers).
-    this.shards = new Shards(this.dims, (worth, x, y) => {
+    this.shards = new Shards(this.dims, (worth, x, y, streak) => {
       addCoins(worth);
       this.floaters.popCoin(worth, x, y);
-      audio.coin();
+      audio.coin(streak);
     });
 
     // Z-order: beams (laser.container) sit BEHIND the target so the object
