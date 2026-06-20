@@ -136,8 +136,8 @@ export class Scene {
   // The number erupts from the hole the bite just opened (near its rim), falling
   // back to the object's top while the object is still pristine and hole-less.
   click(px, py) {
-    audio.hit(); // tap feedback on every lab press, object or not
     if (!this.alive) return;
+    audio.hit();
     const d = P.clickDamage(state.clickLevel, state.objectTier);
     this.damage(d);
     const c = P.LASER_TIER_COLORS[state.laserTier];

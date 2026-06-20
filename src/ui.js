@@ -3,7 +3,7 @@
 // labels/costs and calls the buy actions on state; state.onChange re-renders.
 import $ from 'jquery';
 import * as P from './progression.js';
-import { fmt, fmtCoins, fmtDuration } from './format.js';
+import { fmt, fmtCoins, fmtDuration, fmtMult } from './format.js';
 import { objectImageUrl, objectSetName, objectItemName } from './lab/assets.js';
 import { saveGame } from './persistence.js';
 import { audio } from './audio.js';
@@ -348,7 +348,7 @@ function buildCoins() {
     refresh(els) {
       const lvl = state.shardLevel;
       tx(els.name, `Shard Value · Lv ${lvl}`);
-      htm(els.sub, `<span class="val">${fmt(P.shardValue(lvl))}×</span> coins per shard`);
+      htm(els.sub, `<span class="val">${fmtMult(P.shardValue(lvl))}×</span> coins per shard`);
       const cost = P.shardCost(lvl);
       htm(els.btn, `Upgrade<br><span class="cost">${COIN_SM}${fmt(cost)}</span>`);
       setBuyDisabled(els.btn, state.coins < cost);
@@ -787,14 +787,14 @@ function updateTutorial() {
     mode = 'left';
   } else {
     txt = 'UNLOCK ALL RELICS TO ACCESS NEXT TIER';
-    rect = rectOf('#panel-objects button.next-tier');
-    mode = 'above';
+    rect = rectOf('#panel-objects .obj-row');
+    mode = 'below';
   }
 
   const txtEl = $b[0].querySelector('.tb-txt');
   if (txtEl && txtEl.textContent !== txt) txtEl.textContent = txt;
 
-  if (!rect || rect.width === 0) {
+  if (!rect || rect.width === 0 || rect.bottom < 0) {
     $b.attr('hidden', '');
     return;
   }
@@ -802,6 +802,7 @@ function updateTutorial() {
   $b.removeAttr('hidden');
   cls($b, 'pulsing', mode === 'centred'); // rapid green pulse only over the lab
   cls($b, 'at-above', mode === 'above');
+  cls($b, 'at-below', mode === 'below');
   cls($b, 'at-left', mode === 'left');
 
   const n = $b[0];
@@ -811,6 +812,9 @@ function updateTutorial() {
   } else if (mode === 'above') {
     n.style.left = `${rect.left + rect.width / 2}px`;
     n.style.top = `${rect.top - 12}px`;
+  } else if (mode === 'below') {
+    n.style.left = `${rect.left + rect.width / 2}px`;
+    n.style.top = `${rect.bottom + 12}px`;
   } else {
     // Left of the button, vertically centred. The badge's right edge anchors at
     // `left` (translate(-100%)); clamp so the whole badge stays on-screen.

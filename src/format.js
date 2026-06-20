@@ -30,6 +30,14 @@ export function fmt(n) {
   return x.toFixed(1).replace(/\.0$/, '') + FMT_UNITS[u];
 }
 
+// Multiplier formatter: preserves decimals so values like 1.18× read correctly.
+// fmt() floors the 1–999 range, which collapses early shard-value multipliers to "1".
+export function fmtMult(n) {
+  if (n < 10) return n.toFixed(2);
+  if (n < 100) return n.toFixed(1);
+  return fmt(n);
+}
+
 // Human-readable away-time, e.g. "12h 0m", "5m 30s", "45s". Shows at most the
 // two most significant non-zero units.
 export function fmtDuration(seconds) {

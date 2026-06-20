@@ -114,6 +114,7 @@ body {
 #lab canvas {
   display: block;
   border-radius: 12px;
+  outline: none;
 }
 
 /* Right-hand column: coins card stacked above the upgrades panel. */
@@ -1097,15 +1098,19 @@ button.next-tier .nt-need {
     box-shadow: 0 0 26px rgba(87, 224, 138, 0.95);
   }
 }
-/* Anchored-to-a-button phases: sit above (down pointer) or to the left (right
-   pointer) of the target. */
+/* Anchored-to-a-button phases: sit above (down pointer), below (up pointer)
+   or to the left (right pointer) of the target. */
 #tut-badge.at-above,
+#tut-badge.at-below,
 #tut-badge.at-left {
   box-shadow: 0 0 16px rgba(87, 224, 138, 0.5);
   animation: tut-bob 0.9s ease-in-out infinite;
 }
 #tut-badge.at-above {
   transform: translate(-50%, -100%);
+}
+#tut-badge.at-below {
+  transform: translate(-50%, 0);
 }
 #tut-badge.at-left {
   transform: translate(-100%, -50%);
@@ -1119,6 +1124,16 @@ button.next-tier .nt-need {
   transform: translateX(-50%);
   border: 9px solid transparent;
   border-top-color: var(--good);
+}
+/* Upward pointer (badge below the target). */
+#tut-badge.at-below::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -9px;
+  transform: translateX(-50%);
+  border: 9px solid transparent;
+  border-bottom-color: var(--good);
 }
 /* Rightward pointer (badge to the left of the target). */
 #tut-badge.at-left::after {
@@ -1409,3 +1424,14 @@ button.next-tier .nt-need {
   transform: translateX(20px);
   background: var(--good);
 }
+
+/* ---------------------------------------------------------------------------
+   Styled scrollbars — keeps the OS chrome from jarring against the dark theme.
+   WebKit pseudo-elements (Chrome / Safari / Edge); Firefox scrollbar-* props.
+   --------------------------------------------------------------------------- */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--panel-2); border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+/* Firefox */
+* { scrollbar-width: thin; scrollbar-color: var(--border) var(--panel-2); }
