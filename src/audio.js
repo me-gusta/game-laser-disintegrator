@@ -118,10 +118,22 @@ class AudioManager {
   _unlock() {
     if (this.ready) return;
     this.ready = true;
-    // Defensively resume the Web Audio context (Howler also auto-unlocks on its
-    // own gesture listeners, but pointerdown isn't always among them).
     if (Howler.ctx && Howler.ctx.state !== 'running') Howler.ctx.resume();
-    if (this.settings.music) this._playMusic();
+    if (this.settings.music) {
+      // Howler's _unlockAudio calls .load() on html5 sound nodes, never
+      // .play(), so the <audio> element stays locked on mobile browsers that
+      // require a per-element gesture (older iOS). Fix: play+pause in this
+      // gesture context to grant the unlock without producing any sound.
+      // The AbortError from the immediate pause() is expected — suppress it.
+      // Howler's queued play fires once the track loads and succeeds because
+      // the element is now unlocked.
+      const node = this.music._sounds[0]?._node;
+      if (node) {
+        node.play().catch(() => {});
+        node.pause();
+      }
+      if (!this.music.playing()) this.music.play();
+    }
   }
 
   _playMusic() {
